@@ -1,0 +1,89 @@
+.settings {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+}
+
+.settings h1 {
+  margin: 0;
+  font-size: 1.4em;
+}
+
+.settings h2 {
+  margin: 0 0 4px;
+  font-size: 1.05em;
+}
+
+.settings__status {
+  margin: 0 0 8px;
+  color: var(--muted);
+}
+
+.settings__form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings__row {
+  display: flex;
+  gap: 8px;
+}
+
+.settings__input {
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+}
+
+.settings__input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.settings__button {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.settings__button--primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.settings__button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.settings__hint {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.settings__feedback {
+  margin: 8px 0 0;
+}
+
+.settings__feedback--error {
+  color: var(--danger);
+}
+
+.settings__feedback--success {
+  color: var(--success);
+}

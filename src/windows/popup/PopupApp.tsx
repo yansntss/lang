@@ -2,6 +2,7 @@ import { useCallback, useRef, useState, type KeyboardEvent } from "react";
 import { usePopupLifecycle } from "../../hooks/usePopupLifecycle";
 import { useTranslate } from "../../hooks/useTranslate";
 import { copyToClipboard, errorMessage, hidePopup } from "../../lib/tauri";
+import "../../styles/base.css";
 import TranslationResult from "./TranslationResult";
 import "./popup.css";
 
