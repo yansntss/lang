@@ -60,10 +60,13 @@ Eventos Rust → front: `popup://prefill`, `popup://reset`.
 Cada fase termina com: `cargo test`, `clippy -D warnings`, `fmt --check`, testes do front, este arquivo atualizado e commits conventional.
 
 ### Fase 0 — Fundação
-- [ ] Renomear branch para `main`, commit inicial do scaffold
-- [ ] Remover `opener` e o demo do template; CSP restritivo
-- [ ] `AppError` (thiserror) e módulo `secrets` com trait + `InMemoryStore`
-- [ ] vitest configurado; entradas Vite multi-página
+- [x] Renomear branch para `main`, commit inicial do scaffold
+- [x] Remover `opener` e o demo do template; CSP restritivo
+- [x] `AppError` (thiserror) e módulo `secrets` com trait + `InMemoryStore`
+- [x] vitest configurado; entradas Vite multi-página (`popup.html`, `settings.html`)
+
+Notas: `cargo`/`rustc` ficam em `C:\Users\yansa\.cargo\bin`, fora do PATH do `powershell.exe`
+chamado pelo WSL. Prefixar com `$env:PATH += ";C:\Users\yansa\.cargo\bin"`.
 
 ### Fase 1 — MVP (bandeja + atalho + janela + DeepL)
 - [ ] Decisão de idioma + `DeepLClient` com testes `wiremock` (403, 456, timeout)
