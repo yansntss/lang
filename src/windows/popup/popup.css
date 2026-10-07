@@ -1,0 +1,89 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1b1b1f;
+  --muted: #6b6b76;
+  --border: #d9d9e0;
+  --surface: #f4f4f7;
+  --accent: #2f6fed;
+  --danger: #c62828;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1e1f24;
+    --fg: #ececf1;
+    --muted: #9a9aa6;
+    --border: #34353c;
+    --surface: #27282e;
+    --accent: #6c9bff;
+    --danger: #ff7b72;
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.popup {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+}
+
+.popup__input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px;
+  resize: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+}
+
+.popup__input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.popup__result {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.popup__translation {
+  margin: 0;
+  font-size: 1.1em;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
+.popup__meta,
+.popup__hint {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.popup__error {
+  margin: 0;
+  color: var(--danger);
+}
