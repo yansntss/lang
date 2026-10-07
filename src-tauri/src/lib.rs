@@ -1,5 +1,6 @@
 pub mod error;
 pub mod secrets;
+pub mod services;
 
 pub use error::AppError;
 
