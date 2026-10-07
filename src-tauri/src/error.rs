@@ -34,6 +34,12 @@ pub enum AppError {
 
     #[error("O serviço de tradução respondeu com erro ({0}).")]
     Upstream(u16),
+
+    #[error("Não foi possível copiar para a área de transferência.")]
+    Clipboard(String),
+
+    #[error("Não foi possível controlar a janela.")]
+    Window(String),
 }
 
 impl AppError {
@@ -47,6 +53,8 @@ impl AppError {
             Self::RateLimited => "rate_limited",
             Self::Network(_) => "network",
             Self::Upstream(_) => "upstream",
+            Self::Clipboard(_) => "clipboard",
+            Self::Window(_) => "window",
         }
     }
 }
@@ -128,6 +136,30 @@ mod tests {
 
             assert_eq!(value["code"], code);
             assert_eq!(value["message"], message);
+        }
+    }
+
+    #[test]
+    fn serializes_system_errors_with_generic_messages_only() {
+        let cases = [
+            (
+                AppError::Clipboard("OpenClipboard falhou: 0x5".into()),
+                "clipboard",
+                "Não foi possível copiar para a área de transferência.",
+            ),
+            (
+                AppError::Window("HWND inválido".into()),
+                "window",
+                "Não foi possível controlar a janela.",
+            ),
+        ];
+
+        for (error, code, message) in cases {
+            let json = serde_json::to_string(&error).unwrap();
+
+            assert!(json.contains(&format!(r#""code":"{code}""#)));
+            assert!(json.contains(message));
+            assert!(!json.contains("0x5") && !json.contains("HWND"));
         }
     }
 
