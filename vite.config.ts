@@ -1,12 +1,31 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-// @ts-expect-error type error without @types/node package
+import { fileURLToPath } from "node:url";
 import process from "node:process";
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vitest/config";
+
 const host = process.env.TAURI_DEV_HOST;
+
+const entry = (file: string) => fileURLToPath(new URL(file, import.meta.url));
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
   plugins: [react()],
+
+  // Uma página HTML por janela do app.
+  build: {
+    rollupOptions: {
+      input: {
+        popup: entry("./popup.html"),
+        settings: entry("./settings.html"),
+      },
+    },
+  },
+
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/test/setup.ts"],
+    include: ["src/**/*.test.{ts,tsx}"],
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
