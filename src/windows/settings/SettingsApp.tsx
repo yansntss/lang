@@ -58,7 +58,8 @@ export default function SettingsApp() {
       setStatus("configured");
       setFeedback({ kind: "success", text: "Chave salva." });
     } catch (error: unknown) {
-      setFeedback({ kind: "error", text: errorMessage(error) });
+      // O campo já foi limpo (a chave não fica retida), então avisa que é preciso digitar de novo.
+      setFeedback({ kind: "error", text: `${errorMessage(error)} Digite a chave novamente.` });
     } finally {
       setBusy(false);
     }

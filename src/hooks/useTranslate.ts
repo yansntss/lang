@@ -4,6 +4,8 @@ import type { Translation } from "../lib/types";
 
 export const TRANSLATE_DEBOUNCE_MS = 400;
 
+const IDLE: TranslateState = { status: "idle" };
+
 export type TranslateState =
   | { status: "idle" }
   | { status: "loading" }
@@ -18,12 +20,14 @@ export function useTranslate(
   text: string,
   delayMs: number = TRANSLATE_DEBOUNCE_MS,
 ): TranslateState {
-  const [state, setState] = useState<TranslateState>({ status: "idle" });
+  const [state, setState] = useState<TranslateState>(IDLE);
+  // O efeito depende do texto aparado: espaços nas pontas não reiniciam o debounce nem
+  // geram um novo pedido idêntico (a cota do DeepL Free é por caractere).
+  const sourceText = text.trim();
 
   useEffect(() => {
-    const sourceText = text.trim();
     if (sourceText === "") {
-      setState({ status: "idle" });
+      setState(IDLE);
       return;
     }
 
@@ -48,7 +52,8 @@ export function useTranslate(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [text, delayMs]);
+  }, [sourceText, delayMs]);
 
-  return state;
+  // Texto vazio é sempre "idle", sem esperar o efeito: evita piscar o resultado antigo após um reset.
+  return sourceText === "" ? IDLE : state;
 }

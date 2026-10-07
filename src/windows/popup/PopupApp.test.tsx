@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as tauri from "../../lib/tauri";
@@ -200,6 +200,49 @@ describe("PopupApp", () => {
     await user.keyboard("{Escape}");
 
     expect(hidePopup).toHaveBeenCalledOnce();
+  });
+
+  it("refocuses the field when the window regains focus", async () => {
+    render(<PopupApp />);
+    field().blur();
+    expect(field()).not.toHaveFocus();
+
+    fireEvent.focus(window);
+
+    expect(field()).toHaveFocus();
+  });
+
+  it("does not translate again when only surrounding whitespace changes", async () => {
+    translate.mockResolvedValue(translation("olá"));
+    const user = userEvent.setup();
+    render(<PopupApp />);
+    await user.type(field(), "hello");
+    await screen.findByText("olá");
+
+    await user.type(field(), " ");
+    await pause(AFTER_DEBOUNCE_MS);
+
+    expect(translate).toHaveBeenCalledOnce();
+  });
+
+  it("ignores the key repeat of Enter", async () => {
+    translate.mockResolvedValue(translation("olá"));
+    const user = userEvent.setup();
+    render(<PopupApp />);
+    await user.type(field(), "hello");
+    await screen.findByText("olá");
+
+    fireEvent.keyDown(field(), { key: "Enter", repeat: true });
+
+    expect(copyToClipboard).not.toHaveBeenCalled();
+  });
+
+  it("does not hide on Escape while an IME composition is active", () => {
+    render(<PopupApp />);
+
+    fireEvent.keyDown(document, { key: "Escape", isComposing: true });
+
+    expect(hidePopup).not.toHaveBeenCalled();
   });
 
   it("clears the text and refocuses the field when the popup is shown again", async () => {

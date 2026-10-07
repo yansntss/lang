@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { usePopupLifecycle } from "../../hooks/usePopupLifecycle";
 import { useTranslate } from "../../hooks/useTranslate";
 import { copyToClipboard, errorMessage, hidePopup } from "../../lib/tauri";
@@ -19,6 +19,14 @@ export default function PopupApp() {
   }, []);
   usePopupLifecycle({ onReset: reset, onError: setActionError });
 
+  // O popup é ocultado e reexibido, não remontado: `autoFocus` só vale na primeira vez.
+  // Sempre que a janela recebe o foco do sistema, devolve o foco ao campo.
+  useEffect(() => {
+    const focusField = () => inputRef.current?.focus();
+    window.addEventListener("focus", focusField);
+    return () => window.removeEventListener("focus", focusField);
+  }, []);
+
   // Só copia se a tradução exibida corresponde ao texto atual do campo.
   const copyAndClose = async () => {
     if (result.status !== "success" || result.sourceText !== text.trim()) {
@@ -36,7 +44,11 @@ export default function PopupApp() {
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
       return;
     }
+    // Enter nunca insere quebra de linha, mas segurar a tecla não deve copiar várias vezes.
     event.preventDefault();
+    if (event.repeat) {
+      return;
+    }
     void copyAndClose();
   };
 

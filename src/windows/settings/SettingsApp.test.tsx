@@ -97,7 +97,9 @@ describe("SettingsApp", () => {
     await user.type(keyField(), "abc:fx");
     await user.click(saveButton());
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("armazenamento seguro");
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("armazenamento seguro");
+    expect(alert).toHaveTextContent("Digite a chave novamente.");
     expect(screen.getByText(NOT_CONFIGURED)).toBeInTheDocument();
   });
 

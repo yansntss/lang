@@ -30,7 +30,8 @@ export function usePopupLifecycle({ onReset, onError }: PopupLifecycleHandlers):
     );
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      // Esc durante uma composição de IME cancela a composição, não o popup.
+      if (event.key === "Escape" && !event.isComposing) {
         hidePopup().catch((error: unknown) => handlers.current.onError(errorMessage(error)));
       }
     };
