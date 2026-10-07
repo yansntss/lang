@@ -1,9 +1,12 @@
 use std::sync::Mutex;
+use std::thread;
 use std::time::Instant;
 
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Window, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow, Window, WindowEvent};
 
-use super::placement::{place_near_cursor, should_hide_on_blur, Point, Rect, Size};
+use super::placement::{
+    place_near_cursor, should_hide_on_blur, should_hide_unfocused, Point, Rect, Size, BLUR_GRACE,
+};
 use super::window_error;
 use crate::error::AppError;
 
@@ -37,11 +40,22 @@ pub fn show_near_cursor(app: &AppHandle) -> Result<(), AppError> {
         .get_webview_window(POPUP_LABEL)
         .ok_or_else(|| AppError::Window("janela do popup não encontrada".into()))?;
 
+    // Atalho repetido (ou segurado) com o popup já em uso: não apaga o que o usuário digitou.
+    if window.is_visible().map_err(window_error)? && window.is_focused().map_err(window_error)? {
+        return Ok(());
+    }
+
     let cursor = app.cursor_position().map_err(window_error)?;
-    if let Some(monitor) = app
+    // Cursor fora de qualquer monitor (ex.: após desconectar um): usa o monitor primário,
+    // e `place_near_cursor` limita a janela a ele.
+    let monitor = match app
         .monitor_from_point(cursor.x, cursor.y)
         .map_err(window_error)?
     {
+        Some(monitor) => Some(monitor),
+        None => app.primary_monitor().map_err(window_error)?,
+    };
+    if let Some(monitor) = monitor {
         let size = window.outer_size().map_err(window_error)?;
         let work_area = monitor.work_area();
         let placed = place_near_cursor(
@@ -74,7 +88,29 @@ pub fn show_near_cursor(app: &AppHandle) -> Result<(), AppError> {
     app.emit_to(POPUP_LABEL, EVENT_RESET, ())
         .map_err(window_error)?;
     window.show().map_err(window_error)?;
-    window.set_focus().map_err(window_error)
+    let focus_result = window.set_focus().map_err(window_error);
+    hide_if_still_unfocused(window);
+    focus_result
+}
+
+/// Um blur dentro de `BLUR_GRACE` é ignorado e nunca reemitido. Se o Windows recusar o foco,
+/// o popup (always-on-top) ficaria preso na tela; esta verificação final o oculta.
+fn hide_if_still_unfocused(window: WebviewWindow) {
+    thread::spawn(move || {
+        thread::sleep(BLUR_GRACE);
+
+        let shown_at = window.app_handle().state::<PopupState>().shown_at();
+        match window.is_focused() {
+            Ok(is_focused) => {
+                if should_hide_unfocused(is_focused, shown_at, Instant::now()) {
+                    if let Err(error) = window.hide() {
+                        log::warn!("não foi possível ocultar o popup sem foco: {error}");
+                    }
+                }
+            }
+            Err(error) => log::warn!("não foi possível consultar o foco do popup: {error}"),
+        }
+    });
 }
 
 /// Oculta o popup ao perder o foco e impede que seja destruído ao ser "fechado".

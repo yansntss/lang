@@ -38,6 +38,13 @@ fn store_secret(store: &dyn SecretStore, kind: SecretKind, value: &str) -> Resul
             "A chave de API informada é longa demais.".into(),
         ));
     }
+    // Chaves de API não têm espaços nem caracteres de controle; um colar errado falharia
+    // só na hora de traduzir, como um erro de chave inválida difícil de entender.
+    if value.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return Err(AppError::InvalidInput(
+            "A chave de API contém caracteres inválidos.".into(),
+        ));
+    }
     store.set(kind, value)
 }
 
@@ -85,6 +92,18 @@ mod tests {
         store_secret(&store, SecretKind::Anthropic, &at_limit).unwrap();
 
         assert!(store.has(SecretKind::Anthropic).unwrap());
+    }
+
+    #[test]
+    fn rejects_keys_with_control_characters_or_inner_whitespace() {
+        for invalid in ["abc\ndef", "abc def", "abc\tdef", "abc\u{7}def"] {
+            let store = InMemoryStore::new();
+
+            let error = store_secret(&store, SecretKind::Deepl, invalid).unwrap_err();
+
+            assert_eq!(error.code(), "invalid_input", "{invalid:?}");
+            assert!(!store.has(SecretKind::Deepl).unwrap());
+        }
     }
 
     #[test]

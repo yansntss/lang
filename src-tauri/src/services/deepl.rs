@@ -54,16 +54,21 @@ impl DeepLClient {
         Self::build(secrets, None, REQUEST_TIMEOUT)
     }
 
-    /// `base_url_override` existe para apontar o cliente a um servidor falso nos testes.
-    pub fn build(
+    /// `base_url_override` existe para apontar o cliente a um servidor falso nos testes, por
+    /// isso só é acessível dentro do crate. Sem override, só HTTPS é aceito. Redirects nunca
+    /// são seguidos: o texto do usuário não deve ser reenviado a outro destino.
+    pub(crate) fn build(
         secrets: Arc<dyn SecretStore>,
         base_url_override: Option<String>,
         timeout: Duration,
     ) -> Result<Self, AppError> {
-        let http = Client::builder()
+        let mut builder = Client::builder()
             .timeout(timeout)
-            .build()
-            .map_err(network_error)?;
+            .redirect(reqwest::redirect::Policy::none());
+        if base_url_override.is_none() {
+            builder = builder.https_only(true);
+        }
+        let http = builder.build().map_err(network_error)?;
         Ok(Self {
             http,
             secrets,
@@ -98,11 +103,12 @@ impl Translator for DeepLClient {
             return Err(error_for_status(status));
         }
 
+        // Corpo ilegível é erro do serviço; queda de conexão ou timeout no meio dele é de rede.
         let body: TranslateResponse = response.json().await.map_err(|error| {
-            if error.is_timeout() {
-                network_error(error)
-            } else {
+            if error.is_decode() {
                 AppError::Upstream(status.as_u16())
+            } else {
+                network_error(error)
             }
         })?;
 
@@ -132,7 +138,7 @@ fn authorization_header(key: &str) -> Result<HeaderValue, AppError> {
 
 fn error_for_status(status: StatusCode) -> AppError {
     match status.as_u16() {
-        403 => AppError::InvalidApiKey(SecretKind::Deepl),
+        401 | 403 => AppError::InvalidApiKey(SecretKind::Deepl),
         STATUS_QUOTA_EXCEEDED => AppError::QuotaExceeded,
         429 => AppError::RateLimited,
         other => AppError::Upstream(other),
@@ -244,6 +250,7 @@ mod tests {
     #[tokio::test]
     async fn maps_http_failures_to_typed_errors() {
         let cases = [
+            (401, "invalid_api_key"),
             (403, "invalid_api_key"),
             (456, "quota_exceeded"),
             (429, "rate_limited"),
@@ -261,6 +268,28 @@ mod tests {
 
             assert_eq!(error.code(), expected_code, "status {status}");
         }
+    }
+
+    #[tokio::test]
+    async fn does_not_follow_redirects() {
+        let target = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(translation_body("olá", "EN")))
+            .mount(&target)
+            .await;
+        let origin = server_replying(ResponseTemplate::new(307).insert_header(
+            "location",
+            format!("{}/v2/translate", target.uri()).as_str(),
+        ))
+        .await;
+
+        let error = client(&origin, Some(FREE_KEY))
+            .translate("hello", TargetLang::PtBr)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.code(), "upstream");
+        assert_eq!(request_count(&target).await, 0);
     }
 
     #[tokio::test]

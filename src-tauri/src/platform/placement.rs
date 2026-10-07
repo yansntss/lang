@@ -61,6 +61,12 @@ fn place_axis(cursor: i32, window_len: u32, area_start: i32, area_len: u32, offs
     i32::try_from(clamped).unwrap_or(area_start)
 }
 
+/// Verificação ao fim da tolerância: o blur ignorado nunca é reemitido, então, se a janela
+/// não ganhou foco, ela precisa ser ocultada aqui.
+pub fn should_hide_unfocused(is_focused: bool, shown_at: Option<Instant>, now: Instant) -> bool {
+    !is_focused && should_hide_on_blur(shown_at, now)
+}
+
 /// Decide se um evento de perda de foco deve ocultar o popup.
 pub fn should_hide_on_blur(shown_at: Option<Instant>, now: Instant) -> bool {
     match shown_at {
@@ -156,6 +162,39 @@ mod tests {
         let placed = place_near_cursor(at(100, -50), WINDOW, above, OFFSET);
 
         assert_eq!(placed, at(112, -50 - OFFSET - 200));
+    }
+
+    #[test]
+    fn keeps_a_focused_popup_open_at_the_end_of_the_grace_period() {
+        let shown = Instant::now();
+
+        assert!(!should_hide_unfocused(
+            true,
+            Some(shown),
+            shown + BLUR_GRACE
+        ));
+    }
+
+    #[test]
+    fn hides_an_unfocused_popup_at_the_end_of_the_grace_period() {
+        let shown = Instant::now();
+
+        assert!(should_hide_unfocused(
+            false,
+            Some(shown),
+            shown + BLUR_GRACE
+        ));
+    }
+
+    #[test]
+    fn does_not_hide_a_popup_that_was_shown_again_during_the_check() {
+        let shown_again = Instant::now();
+
+        assert!(!should_hide_unfocused(
+            false,
+            Some(shown_again),
+            shown_again + Duration::from_millis(50)
+        ));
     }
 
     #[test]

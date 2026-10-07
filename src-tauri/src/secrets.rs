@@ -50,9 +50,16 @@ pub trait SecretStore: Send + Sync {
 }
 
 /// Implementação em memória, para testes.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct InMemoryStore {
     entries: Mutex<HashMap<SecretKind, String>>,
+}
+
+/// `Debug` manual: um `{:?}` descuidado nunca deve imprimir os segredos guardados.
+impl fmt::Debug for InMemoryStore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("InMemoryStore").finish_non_exhaustive()
+    }
 }
 
 impl InMemoryStore {
@@ -210,6 +217,16 @@ mod tests {
         let kind: SecretKind = serde_json::from_str(r#""anthropic""#).unwrap();
 
         assert_eq!(kind, SecretKind::Anthropic);
+    }
+
+    #[test]
+    fn in_memory_store_debug_output_never_shows_the_secrets() {
+        let store = InMemoryStore::new();
+        store
+            .set(SecretKind::Deepl, "segredo-que-nao-pode-vazar")
+            .unwrap();
+
+        assert!(!format!("{store:?}").contains("segredo-que-nao-pode-vazar"));
     }
 
     #[test]
