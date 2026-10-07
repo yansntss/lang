@@ -15,6 +15,25 @@ pub enum AppError {
 
     #[error("Falha ao acessar o armazenamento seguro de chaves.")]
     SecretStore(String),
+
+    /// A mensagem é escrita pelo próprio backend e é segura para exibir.
+    #[error("{0}")]
+    InvalidInput(String),
+
+    #[error("A chave de API do {0} é inválida ou foi recusada.")]
+    InvalidApiKey(SecretKind),
+
+    #[error("A cota mensal do DeepL foi esgotada.")]
+    QuotaExceeded,
+
+    #[error("Muitas requisições. Aguarde alguns segundos e tente de novo.")]
+    RateLimited,
+
+    #[error("Não foi possível conectar ao serviço de tradução. Verifique sua conexão.")]
+    Network(String),
+
+    #[error("O serviço de tradução respondeu com erro ({0}).")]
+    Upstream(u16),
 }
 
 impl AppError {
@@ -22,6 +41,12 @@ impl AppError {
         match self {
             Self::MissingSecret(_) => "missing_secret",
             Self::SecretStore(_) => "secret_store",
+            Self::InvalidInput(_) => "invalid_input",
+            Self::InvalidApiKey(_) => "invalid_api_key",
+            Self::QuotaExceeded => "quota_exceeded",
+            Self::RateLimited => "rate_limited",
+            Self::Network(_) => "network",
+            Self::Upstream(_) => "upstream",
         }
     }
 }
@@ -66,5 +91,54 @@ mod tests {
         let error = AppError::SecretStore("lock envenenado".into());
 
         assert!(format!("{error:?}").contains("lock envenenado"));
+    }
+
+    #[test]
+    fn serializes_translation_errors_with_user_messages() {
+        let cases = [
+            (
+                AppError::InvalidInput("O texto está vazio.".into()),
+                "invalid_input",
+                "O texto está vazio.",
+            ),
+            (
+                AppError::InvalidApiKey(SecretKind::Deepl),
+                "invalid_api_key",
+                "A chave de API do DeepL é inválida ou foi recusada.",
+            ),
+            (
+                AppError::QuotaExceeded,
+                "quota_exceeded",
+                "A cota mensal do DeepL foi esgotada.",
+            ),
+            (
+                AppError::RateLimited,
+                "rate_limited",
+                "Muitas requisições. Aguarde alguns segundos e tente de novo.",
+            ),
+            (
+                AppError::Upstream(500),
+                "upstream",
+                "O serviço de tradução respondeu com erro (500).",
+            ),
+        ];
+
+        for (error, code, message) in cases {
+            let value = serde_json::to_value(&error).unwrap();
+
+            assert_eq!(value["code"], code);
+            assert_eq!(value["message"], message);
+        }
+    }
+
+    #[test]
+    fn network_error_hides_internal_detail_from_the_front() {
+        let error = AppError::Network("https://api-free.deepl.com/v2/translate: refused".into());
+
+        let json = serde_json::to_string(&error).unwrap();
+
+        assert!(json.contains(r#""code":"network""#));
+        assert!(!json.contains("deepl.com"));
+        assert!(format!("{error:?}").contains("deepl.com"));
     }
 }
