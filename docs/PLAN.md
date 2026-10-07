@@ -69,13 +69,33 @@ Notas: `cargo`/`rustc` ficam em `C:\Users\yansa\.cargo\bin`, fora do PATH do `po
 chamado pelo WSL. Prefixar com `$env:PATH += ";C:\Users\yansa\.cargo\bin"`.
 
 ### Fase 1 — MVP (bandeja + atalho + janela + DeepL)
-- [ ] Decisão de idioma + `DeepLClient` com testes `wiremock` (403, 456, timeout)
-- [ ] `KeyringStore`, comandos de segredo, janela `settings` mínima (chave DeepL)
-- [ ] Janela `popup` pré-carregada e oculta
-- [ ] Tray (Abrir, Configurações, Sair)
-- [ ] Atalho global + posicionamento perto do cursor (multi-monitor/DPI)
-- [ ] Front: tradução, Esc fecha, Enter copia, oculta ao perder foco
-- [ ] `single-instance`
+- [x] Decisão de idioma + `DeepLClient` com testes `wiremock` (403, 456, 429, 5xx, timeout)
+- [x] `KeyringStore`, comandos de segredo, janela `settings` mínima (chave DeepL)
+- [x] Janela `popup` pré-carregada e oculta
+- [x] Tray (Abrir, Configurações, Sair)
+- [x] Atalho global (`Ctrl+Alt+T`) + posicionamento perto do cursor (lógica pura testada)
+- [x] Front: tradução, Esc fecha, Enter copia, oculta ao perder foco
+- [x] `single-instance`
+- [x] Permissões por comando e por janela (`AppManifest` + `capabilities/popup.json`, `settings.json`)
+
+Verificação manual (pendente, não automatizável; rodar `npm run tauri dev`):
+- [ ] Tradução real EN→PT e PT→EN com a chave DeepL Free
+- [ ] Atalho abre o popup perto do cursor, inclusive com 2 monitores e DPI diferente
+- [ ] Popup recebe foco ao abrir (o Windows pode recusar `set_focus`) e não fecha sozinho logo após abrir
+- [ ] Esc fecha, Enter copia e fecha, clicar fora oculta, Alt+F4 no popup só oculta
+- [ ] Segunda execução do app não abre outra instância
+- [ ] A chave aparece em `cmdkey /list` e não aparece em `%LOCALAPPDATA%\com.yansa.lang-app\logs`
+
+Notas e desvios do plano original:
+- Smoke test feito: o app sobe, cria a bandeja e abre sozinho a janela "Configurações" quando
+  não há chave. O fluxo atalho → popup → tradução real **não** foi exercitado.
+- `whatlang` sem restrição erra inglês comum (detectou "I would like to know…" como afrikaans).
+  O detector usa uma allowlist (EN, PT, ES, FR, DE, IT) e só confia em `is_reliable()`. Textos
+  curtos viram `Unsure` e usam o `detected_source_language` do DeepL (até 2 chamadas).
+- `keyring` fixado na 3.6.3 (a 4.x tem API nova). `reqwest 0.13` usa `rustls` por padrão e
+  `json` é feature própria. Plugins Tauri fixados em `2` (a linha `3.x` ainda é alpha).
+- Testes do popup usam timers reais: `user-event` trava com fake timers do vitest.
+- Mensagens de erro do backend são genéricas; o detalhe técnico fica só no `Debug` (log).
 
 ### Fase 2 — Captura de texto selecionado
 - [ ] `ClipboardPort` + sequência salvar/copiar/ler/restaurar testada com fake
