@@ -83,6 +83,65 @@ impl SecretStore for InMemoryStore {
     }
 }
 
+/// Nome do serviço sob o qual as chaves ficam no keychain do SO.
+pub const KEYRING_SERVICE: &str = "com.yansa.lang-app";
+
+/// Guarda os segredos no keychain do sistema (Gerenciador de Credenciais no Windows).
+#[derive(Debug, Clone)]
+pub struct KeyringStore {
+    service: String,
+}
+
+impl KeyringStore {
+    pub fn new() -> Self {
+        Self::with_service(KEYRING_SERVICE)
+    }
+
+    /// Permite usar outro nome de serviço, para testes não tocarem nas chaves reais.
+    pub fn with_service(service: impl Into<String>) -> Self {
+        Self {
+            service: service.into(),
+        }
+    }
+
+    fn entry(&self, kind: SecretKind) -> Result<keyring::Entry, AppError> {
+        keyring::Entry::new(&self.service, kind.account()).map_err(store_error)
+    }
+}
+
+impl Default for KeyringStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SecretStore for KeyringStore {
+    fn get(&self, kind: SecretKind) -> Result<Option<String>, AppError> {
+        missing_to_none(self.entry(kind)?.get_password())
+    }
+
+    fn set(&self, kind: SecretKind, value: &str) -> Result<(), AppError> {
+        self.entry(kind)?.set_password(value).map_err(store_error)
+    }
+
+    fn delete(&self, kind: SecretKind) -> Result<(), AppError> {
+        missing_to_none(self.entry(kind)?.delete_credential()).map(|_| ())
+    }
+}
+
+/// "Não existe" não é falha: vira `None`. O detalhe de qualquer outro erro fica só no `Debug`.
+fn missing_to_none<T>(result: Result<T, keyring::Error>) -> Result<Option<T>, AppError> {
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(error) => Err(store_error(error)),
+    }
+}
+
+fn store_error(error: keyring::Error) -> AppError {
+    AppError::SecretStore(error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,5 +210,55 @@ mod tests {
         let kind: SecretKind = serde_json::from_str(r#""anthropic""#).unwrap();
 
         assert_eq!(kind, SecretKind::Anthropic);
+    }
+
+    #[test]
+    fn missing_keyring_entry_becomes_none() {
+        let result = missing_to_none::<String>(Err(keyring::Error::NoEntry));
+
+        assert_eq!(result.unwrap(), None);
+    }
+
+    #[test]
+    fn existing_keyring_value_is_wrapped_in_some() {
+        let result = missing_to_none(Ok("valor".to_owned()));
+
+        assert_eq!(result.unwrap().as_deref(), Some("valor"));
+    }
+
+    #[test]
+    fn other_keyring_errors_become_generic_secret_store_errors() {
+        let result = missing_to_none::<String>(Err(keyring::Error::Invalid(
+            "service".into(),
+            "detalhe interno".into(),
+        )));
+
+        let error = result.unwrap_err();
+
+        assert_eq!(error.code(), "secret_store");
+        assert!(!error.to_string().contains("detalhe interno"));
+        assert!(format!("{error:?}").contains("detalhe interno"));
+    }
+
+    /// Toca no Gerenciador de Credenciais do Windows, sob um nome de serviço de teste que
+    /// é removido ao fim. Rodar com `cargo test -- --ignored`.
+    #[test]
+    #[ignore = "usa o keychain real do sistema operacional"]
+    fn keyring_store_round_trips_against_the_real_credential_store() {
+        let store = KeyringStore::with_service("com.yansa.lang-app.test");
+        store.delete(SecretKind::Deepl).unwrap();
+
+        assert!(!store.has(SecretKind::Deepl).unwrap());
+
+        store.set(SecretKind::Deepl, "primeira:fx").unwrap();
+        store.set(SecretKind::Deepl, "segunda:fx").unwrap();
+        assert_eq!(
+            store.get(SecretKind::Deepl).unwrap().as_deref(),
+            Some("segunda:fx")
+        );
+
+        store.delete(SecretKind::Deepl).unwrap();
+        assert!(!store.has(SecretKind::Deepl).unwrap());
+        store.delete(SecretKind::Deepl).unwrap();
     }
 }
