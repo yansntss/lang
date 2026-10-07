@@ -2,6 +2,7 @@ use tauri::Manager;
 
 pub mod commands;
 pub mod error;
+pub mod platform;
 pub mod secrets;
 pub mod services;
 pub mod state;
