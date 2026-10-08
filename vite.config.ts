@@ -17,6 +17,7 @@ export default defineConfig(() => ({
       input: {
         popup: entry("./popup.html"),
         settings: entry("./settings.html"),
+        history: entry("./history.html"),
       },
     },
   },

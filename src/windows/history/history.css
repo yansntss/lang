@@ -1,0 +1,96 @@
+.history {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 100%;
+  padding: 12px;
+}
+
+.history__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.history__toolbar-actions,
+.history__filters,
+.history__actions,
+.history__tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history__filters input[type="search"] {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+}
+
+.history button {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.history__tabs button[aria-selected="true"] {
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.history__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history__item,
+.history__card {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.history__source,
+.history__translation {
+  margin: 0 0 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
+.history__translation {
+  font-size: 1.05em;
+}
+
+.history__meta,
+.history__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.history__error {
+  margin: 0;
+  color: var(--danger);
+}

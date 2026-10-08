@@ -1,6 +1,13 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { ExplainEvent, PopupResetPayload, SecretKind, Translation } from "./types";
+import type {
+  ExplainEvent,
+  HistoryEntry,
+  HistoryRecord,
+  PopupResetPayload,
+  SecretKind,
+  Translation,
+} from "./types";
 
 // Único ponto do front que fala com o backend. Nenhum comando devolve chaves de API.
 
@@ -32,6 +39,57 @@ export function explain(
 
 export function cancelExplain(id: number): Promise<void> {
   return invoke<void>("cancel_explain", { id });
+}
+
+/** Itens por página de `listHistory` (o backend usa o mesmo valor). */
+export const HISTORY_PAGE_SIZE = 50;
+
+/** Guarda uma tradução confirmada. Não grava nada se o histórico estiver desligado. */
+export function recordHistory(record: HistoryRecord): Promise<void> {
+  return invoke<void>("record_history", { ...record });
+}
+
+export function listHistory(
+  query: string | null,
+  favoritesOnly: boolean,
+  offset: number,
+): Promise<HistoryEntry[]> {
+  return invoke<HistoryEntry[]>("list_history", { query, favoritesOnly, offset });
+}
+
+export function deleteHistory(id: number): Promise<void> {
+  return invoke<void>("delete_history", { id });
+}
+
+export function clearHistory(): Promise<void> {
+  return invoke<void>("clear_history");
+}
+
+/** Devolve o novo estado do favorito. */
+export function toggleFavorite(id: number): Promise<boolean> {
+  return invoke<boolean>("toggle_favorite", { id });
+}
+
+/** Exporta o histórico em CSV e devolve o caminho do arquivo gravado. */
+export function exportHistory(): Promise<string> {
+  return invoke<string>("export_history");
+}
+
+export function getHistoryEnabled(): Promise<boolean> {
+  return invoke<boolean>("get_history_enabled");
+}
+
+export function setHistoryEnabled(enabled: boolean): Promise<void> {
+  return invoke<void>("set_history_enabled", { enabled });
+}
+
+/** O próximo favorito a revisar, ou `null` se não houver favoritos. */
+export function nextReview(): Promise<HistoryEntry | null> {
+  return invoke<HistoryEntry | null>("next_review");
+}
+
+export function markReviewed(id: number): Promise<void> {
+  return invoke<void>("mark_reviewed", { id });
 }
 
 export function hidePopup(): Promise<void> {

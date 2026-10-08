@@ -20,6 +20,28 @@ export type ExplainEvent =
   | { kind: "done" }
   | { kind: "error"; code: string; message: string };
 
+/** Item do histórico (espelha `HistoryEntry` do backend). Datas em ms desde 1970 UTC. */
+export interface HistoryEntry {
+  id: number;
+  sourceText: string;
+  translatedText: string;
+  sourceLang: string;
+  targetLang: TargetLang;
+  favorite: boolean;
+  createdAt: number;
+  lastUsedAt: number;
+  useCount: number;
+  lastReviewedAt: number | null;
+}
+
+/** Tradução confirmada pelo usuário, para guardar no histórico. */
+export interface HistoryRecord {
+  sourceText: string;
+  translatedText: string;
+  sourceLang: string;
+  targetLang: TargetLang;
+}
+
 /** Corpo do evento `popup://reset`. */
 export interface PopupResetPayload {
   prefill: string | null;

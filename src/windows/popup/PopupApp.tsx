@@ -3,7 +3,8 @@ import { useExplain } from "../../hooks/useExplain";
 import { useHasSecret } from "../../hooks/useHasSecret";
 import { usePopupLifecycle } from "../../hooks/usePopupLifecycle";
 import { useTranslate } from "../../hooks/useTranslate";
-import { copyToClipboard, errorMessage, hidePopup } from "../../lib/tauri";
+import { copyToClipboard, errorMessage, hidePopup, recordHistory } from "../../lib/tauri";
+import type { Translation } from "../../lib/types";
 import "../../styles/base.css";
 import ExplainPanel from "./ExplainPanel";
 import TranslationResult from "./TranslationResult";
@@ -13,6 +14,7 @@ export default function PopupApp() {
   const [text, setText] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const lastRecorded = useRef<string | null>(null);
   const result = useTranslate(text);
   const explanation = useExplain();
   const cancelExplanation = explanation.cancel;
@@ -23,6 +25,7 @@ export default function PopupApp() {
   const reset = useCallback(
     (prefill: string | null) => {
       cancelExplanation();
+      lastRecorded.current = null;
       setText(prefill ?? "");
       setActionError(null);
       inputRef.current?.focus();
@@ -45,10 +48,32 @@ export default function PopupApp() {
     return () => window.removeEventListener("blur", cancelExplanation);
   }, [cancelExplanation]);
 
+  // A tradução só entra no histórico quando o usuário a confirma (Enter ou Explicar): a do
+  // popup sai sozinha enquanto se digita, e gravá-las todas encheria o histórico de rascunhos.
+  // O backend registra a falha em log, e ela não deve atrapalhar a cópia nem a explicação.
+  const remember = (sourceText: string, translation: Translation) => {
+    // Explicar e depois Enter (ou cliques repetidos) são a mesma tradução: conta uma vez só.
+    const key = `${sourceText}\u0000${translation.text}`;
+    if (lastRecorded.current === key) {
+      return;
+    }
+    lastRecorded.current = key;
+    recordHistory({
+      sourceText,
+      translatedText: translation.text,
+      sourceLang: translation.sourceLang,
+      targetLang: translation.targetLang,
+    }).catch(() => {});
+  };
+
   // Só o clique do usuário envia o texto ao provedor de IA.
   const explainTranslation = () => {
     if (currentTranslation) {
+      remember(text.trim(), currentTranslation);
       explanation.start(text.trim(), currentTranslation.text);
+      // O botão fica desabilitado durante a resposta e o foco se perderia: devolvê-lo ao campo
+      // mantém o Enter copiando a tradução.
+      inputRef.current?.focus();
     }
   };
 
@@ -65,6 +90,7 @@ export default function PopupApp() {
     if (result.status !== "success" || result.sourceText !== text.trim()) {
       return;
     }
+    remember(result.sourceText, result.translation);
     try {
       await copyToClipboard(result.translation.text);
       await hidePopup();
