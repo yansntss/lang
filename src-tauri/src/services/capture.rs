@@ -133,6 +133,40 @@ fn normalize(text: &str) -> String {
     text.trim().chars().take(MAX_PREFILL_CHARS).collect()
 }
 
+/// Terminais tratam Ctrl+C como interrupção (SIGINT): simulá-lo ali poderia encerrar um
+/// processo em execução do usuário. Nesses apps a captura nunca é tentada.
+pub fn is_capture_blocked(process_path: Option<&str>) -> bool {
+    // Sem saber qual app está em foco não dá para garantir que não é um terminal.
+    let Some(path) = process_path else {
+        return true;
+    };
+
+    let file_name = path
+        .rsplit(['\\', '/'])
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+
+    file_name.is_empty() || BLOCKED_PROCESSES.contains(&file_name.as_str())
+}
+
+/// Nomes de arquivo em minúsculas.
+const BLOCKED_PROCESSES: [&str; 12] = [
+    "windowsterminal.exe",
+    "openconsole.exe",
+    "cmd.exe",
+    "powershell.exe",
+    "pwsh.exe",
+    "conhost.exe",
+    "wsl.exe",
+    "bash.exe",
+    "mintty.exe",
+    "alacritty.exe",
+    "wezterm-gui.exe",
+    "conemu64.exe",
+];
+
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicU32, Ordering};
@@ -287,6 +321,54 @@ mod tests {
             text: content.to_owned(),
             restore_failed: false,
         }
+    }
+
+    #[test]
+    fn blocks_terminals_where_ctrl_c_interrupts_the_running_process() {
+        for terminal in [
+            "WindowsTerminal.exe",
+            "OpenConsole.exe",
+            "cmd.exe",
+            "powershell.exe",
+            "pwsh.exe",
+            "conhost.exe",
+            "wsl.exe",
+            "bash.exe",
+            "mintty.exe",
+            "alacritty.exe",
+            "wezterm-gui.exe",
+            "ConEmu64.exe",
+        ] {
+            assert!(is_capture_blocked(Some(terminal)), "{terminal}");
+        }
+    }
+
+    #[test]
+    fn blocks_regardless_of_case_and_full_path() {
+        assert!(is_capture_blocked(Some(r"C:\Windows\System32\CMD.EXE")));
+        assert!(is_capture_blocked(Some(
+            "C:/Program Files/PowerShell/7/pwsh.exe"
+        )));
+    }
+
+    #[test]
+    fn allows_regular_applications() {
+        for app in ["notepad.exe", "chrome.exe", "Code.exe", "WINWORD.EXE"] {
+            assert!(!is_capture_blocked(Some(app)), "{app}");
+        }
+    }
+
+    #[test]
+    fn matches_the_whole_file_name_not_a_fragment() {
+        assert!(!is_capture_blocked(Some(r"C:\Tools\mycmd.exe")));
+        assert!(!is_capture_blocked(Some(r"C:\Tools\cmder-notes.exe")));
+    }
+
+    #[test]
+    fn blocks_when_the_foreground_process_is_unknown() {
+        assert!(is_capture_blocked(None));
+        assert!(is_capture_blocked(Some("")));
+        assert!(is_capture_blocked(Some("   ")));
     }
 
     #[test]
