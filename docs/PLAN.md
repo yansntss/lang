@@ -422,19 +422,21 @@ Notas e decisões da Fase 6a:
 Revisão de segurança final (security-reviewer): sem itens críticos ou altos; o histórico git não
 tem segredos. Corrigido: `.gitignore` (certificados, bancos, `.claude/settings.json`), ações do CI
 fixadas. Pendências (baixo risco ou só se o repositório virar público):
-- **Tornar o repositório público expõe** o e-mail do autor e o hostname `nome-da-maquina`
-  (autor `root`) em todos os commits, além de `CLAUDE.md` e `.claude/rules/**`, que citam caminhos
-  locais. Se for público: reescrever o histórico (`git filter-repo --mailmap`), ou publicar um
-  repositório novo sem histórico, e decidir se `CLAUDE.md` e `.claude/rules` ficam fora.
+- **Publicação do repositório (decidido em 2026-10-08):** o hostname da máquina foi removido do
+  histórico (autor do primeiro commit e uma nota deste arquivo) com `git filter-branch`. Os 45
+  commits mantêm o mesmo conteúdo, mas têm **novos SHAs** e o histórico precisa de `force push`
+  (com `--force-with-lease`) antes de o repositório virar público. Por decisão do autor,
+  continuam públicos: o e-mail `yansantos.dev@gmail.com` nos commits, `CLAUDE.md` e
+  `.claude/rules/**` (citam caminhos locais e o usuário do Windows) e o identificador
+  `com.yansa.lang-app`. Sem arquivo de licença.
 - `startup-error.log` cresce sem limite e é aberto sem checar link simbólico (risco baixo: pasta
   do próprio usuário); `style-src 'unsafe-inline'` continua no CSP de release.
 
-Notas da 6b (atualizador), a decidir:
+Notas da 6b (atualizador):
 - O atualizador consulta uma URL pública de `latest.json`. Com o repositório **privado**, o
-  GitHub Releases exige autenticação, e embutir um token no app seria um vazamento. Opções:
-  tornar o repositório público (veja os riscos acima), hospedar os arquivos de atualização em
-  outro lugar público (GitHub Pages de um repositório público só para releases, ou um bucket), ou
-  não ter atualizador e distribuir cada versão manualmente.
+  GitHub Releases exige autenticação, e embutir um token no app seria um vazamento. O autor vai
+  tornar o repositório público, o que destrava a 6b (o `latest.json` fica acessível sem
+  autenticação).
 - Com o atualizador: `tauri-plugin-updater` chamado só pelo Rust, chave pública no
   `tauri.conf.json`, chave privada só como segredo do GitHub (com backup fora do repositório),
   seção "Sobre e atualizações" nas Configurações e workflow de release por tag `v*`.
