@@ -40,6 +40,9 @@ pub enum AppError {
 
     #[error("Não foi possível controlar a janela.")]
     Window(String),
+
+    #[error("Não foi possível capturar o texto selecionado.")]
+    Capture(String),
 }
 
 impl AppError {
@@ -55,6 +58,7 @@ impl AppError {
             Self::Upstream(_) => "upstream",
             Self::Clipboard(_) => "clipboard",
             Self::Window(_) => "window",
+            Self::Capture(_) => "capture",
         }
     }
 }
@@ -151,6 +155,11 @@ mod tests {
                 AppError::Window("HWND inválido".into()),
                 "window",
                 "Não foi possível controlar a janela.",
+            ),
+            (
+                AppError::Capture("SendInput: acesso negado".into()),
+                "capture",
+                "Não foi possível capturar o texto selecionado.",
             ),
         ];
 
