@@ -1,7 +1,8 @@
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard, PoisonError};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use rusqlite::functions::FunctionFlags;
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use super::migrations::migrate;
@@ -12,6 +13,11 @@ use crate::services::translation::MAX_INPUT_CHARS;
 
 const ENABLED_KEY: &str = "history_enabled";
 const MAX_SOURCE_LANG_CHARS: usize = 16;
+/// Busca mais longa que isso é cortada: ninguém digita tanto, e padrões enormes fazem o
+/// SQLite recusar o `LIKE`.
+const MAX_QUERY_CHARS: usize = 200;
+/// Quanto esperar se outro processo (backup, sincronização) estiver com o arquivo aberto.
+const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 /// Idiomas de destino que o app produz (ver `TargetLang`).
 const TARGET_LANGS: [&str; 2] = ["PT-BR", "EN-US"];
 
@@ -60,6 +66,11 @@ impl SqliteHistory {
         clock: Clock,
         max_entries: u32,
     ) -> Result<Self, AppError> {
+        // Sem isso, `DELETE` deixa o texto apagado nas páginas livres do arquivo.
+        conn.execute_batch("PRAGMA secure_delete = ON;")
+            .map_err(db_error)?;
+        conn.busy_timeout(BUSY_TIMEOUT).map_err(db_error)?;
+        register_fold(&conn)?;
         migrate(&mut conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
@@ -82,8 +93,11 @@ impl SqliteHistory {
         }
 
         let now = (self.clock)();
-        conn.execute(
-            "INSERT INTO history (source_text, translated_text, source_lang, target_lang, \
+        // Gravar e podar numa transação só: um fsync e nenhum estado intermediário no disco.
+        let transaction = conn.unchecked_transaction().map_err(db_error)?;
+        transaction
+            .execute(
+                "INSERT INTO history (source_text, translated_text, source_lang, target_lang, \
                                   created_at, last_used_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?5)
              ON CONFLICT (source_text, target_lang) DO UPDATE SET
@@ -91,25 +105,26 @@ impl SqliteHistory {
                  source_lang     = excluded.source_lang,
                  last_used_at    = excluded.last_used_at,
                  use_count       = use_count + 1",
-            params![
-                valid.source_text,
-                valid.translated_text,
-                valid.source_lang,
-                valid.target_lang,
-                now
-            ],
-        )
-        .map_err(db_error)?;
+                params![
+                    valid.source_text,
+                    valid.translated_text,
+                    valid.source_lang,
+                    valid.target_lang,
+                    now
+                ],
+            )
+            .map_err(db_error)?;
 
         // Só os não favoritos contam para o teto: favorito nunca é apagado sozinho.
-        conn.execute(
-            "DELETE FROM history WHERE favorite = 0 AND id NOT IN (
-                 SELECT id FROM history WHERE favorite = 0
-                 ORDER BY last_used_at DESC, id DESC LIMIT ?1)",
-            params![self.max_entries],
-        )
-        .map_err(db_error)?;
-        Ok(())
+        transaction
+            .execute(
+                "DELETE FROM history WHERE favorite = 0 AND id NOT IN (
+                     SELECT id FROM history WHERE favorite = 0
+                     ORDER BY last_used_at DESC, id DESC LIMIT ?1)",
+                params![self.max_entries],
+            )
+            .map_err(db_error)?;
+        transaction.commit().map_err(db_error)
     }
 
     /// Uma página do histórico, do uso mais recente para o mais antigo.
@@ -119,13 +134,13 @@ impl SqliteHistory {
             .as_deref()
             .map(str::trim)
             .filter(|text| !text.is_empty())
-            .map(like_pattern);
+            .map(|text| like_pattern(&fold(&truncate_chars(text, MAX_QUERY_CHARS))));
         let conn = self.conn();
         let mut statement = conn
             .prepare(&format!(
                 "SELECT {COLUMNS} FROM history
-                 WHERE (?1 IS NULL OR source_text LIKE ?1 ESCAPE '\\'
-                                   OR translated_text LIKE ?1 ESCAPE '\\')
+                 WHERE (?1 IS NULL OR fold(source_text) LIKE ?1 ESCAPE '\\'
+                                   OR fold(translated_text) LIKE ?1 ESCAPE '\\')
                    AND (?2 = 0 OR favorite = 1)
                  ORDER BY last_used_at DESC, id DESC
                  LIMIT ?3 OFFSET ?4"
@@ -159,12 +174,11 @@ impl SqliteHistory {
         Ok(())
     }
 
-    /// Apaga tudo, favoritos inclusive.
+    /// Apaga tudo, favoritos inclusive, e compacta o arquivo para o texto não sobrar nele.
     pub fn clear(&self) -> Result<(), AppError> {
         self.conn()
-            .execute("DELETE FROM history", [])
-            .map_err(db_error)?;
-        Ok(())
+            .execute_batch("DELETE FROM history; VACUUM;")
+            .map_err(db_error)
     }
 
     /// Inverte o favorito e devolve o novo estado.
@@ -266,6 +280,42 @@ fn map_row(row: &Row<'_>) -> rusqlite::Result<HistoryEntry> {
     })
 }
 
+fn truncate_chars(text: &str, max: usize) -> String {
+    text.chars().take(max).collect()
+}
+
+/// Minúsculas e sem acento, para a busca achar "Olá" digitando "ola". O `LIKE` do SQLite só
+/// ignora maiúsculas em ASCII, então a comparação é feita sobre o texto dobrado.
+fn fold(text: &str) -> String {
+    text.chars()
+        .flat_map(char::to_lowercase)
+        .map(strip_accent)
+        .collect()
+}
+
+fn strip_accent(character: char) -> char {
+    match character {
+        'á' | 'à' | 'â' | 'ã' | 'ä' => 'a',
+        'é' | 'è' | 'ê' | 'ë' => 'e',
+        'í' | 'ì' | 'î' | 'ï' => 'i',
+        'ó' | 'ò' | 'ô' | 'õ' | 'ö' => 'o',
+        'ú' | 'ù' | 'û' | 'ü' => 'u',
+        'ç' => 'c',
+        'ñ' => 'n',
+        other => other,
+    }
+}
+
+fn register_fold(conn: &Connection) -> Result<(), AppError> {
+    conn.create_scalar_function(
+        "fold",
+        1,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |context| Ok(fold(&context.get::<String>(0)?)),
+    )
+    .map_err(db_error)
+}
+
 /// `LIKE` com `%`, `_` e `\` tratados como texto comum, e não como curingas.
 fn like_pattern(text: &str) -> String {
     let mut pattern = String::with_capacity(text.len() + 2);
@@ -298,7 +348,10 @@ fn validate<'a>(entry: &NewEntry<'a>) -> Result<NewEntry<'a>, AppError> {
         ));
     }
     if source_lang.is_empty()
-        || source_lang.chars().count() > MAX_SOURCE_LANG_CHARS
+        || source_lang.len() > MAX_SOURCE_LANG_CHARS
+        || !source_lang
+            .chars()
+            .all(|character| character.is_ascii_alphabetic() || character == '-')
         || !TARGET_LANGS.contains(&entry.target_lang)
     {
         return Err(AppError::InvalidInput(
@@ -464,6 +517,14 @@ mod tests {
                 ..entry("hello", "olá")
             },
             NewEntry {
+                source_lang: "<b>",
+                ..entry("hello", "olá")
+            },
+            NewEntry {
+                source_lang: "ABCDEFGHIJKLMNOPQ",
+                ..entry("hello", "olá")
+            },
+            NewEntry {
                 target_lang: "ES",
                 ..entry("hello", "olá")
             },
@@ -551,6 +612,49 @@ mod tests {
         assert_eq!(fixture.search("%"), vec!["100% sure"]);
         assert_eq!(fixture.search("e_c"), vec!["snake_case"]);
         assert_eq!(fixture.search("\\"), vec!["path\\to"]);
+    }
+
+    #[test]
+    fn search_ignores_case_and_accents_in_portuguese() {
+        let fixture = Fixture::new();
+        fixture.at(1).record("hello", "Olá, água!");
+        fixture.at(2).record("coração", "heart");
+        fixture.at(3).record("unrelated", "x");
+
+        assert_eq!(fixture.search("ola"), vec!["hello"]);
+        assert_eq!(fixture.search("ÁGUA"), vec!["hello"]);
+        assert_eq!(fixture.search("coracao"), vec!["coração"]);
+        assert_eq!(fixture.search("CORAÇÃO"), vec!["coração"]);
+    }
+
+    #[test]
+    fn a_very_long_search_is_cut_instead_of_failing() {
+        let fixture = Fixture::new();
+        fixture.record("hello", "olá");
+
+        assert!(fixture.search(&"a".repeat(100_000)).is_empty());
+    }
+
+    #[test]
+    fn clearing_removes_the_text_from_the_file_itself() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        let history = SqliteHistory::open(&path).unwrap();
+        history
+            .record(&entry("segredo-unico-xyzzy", "tradução-secreta-plugh"))
+            .unwrap();
+
+        history.clear().unwrap();
+        drop(history);
+
+        let bytes = std::fs::read(&path).unwrap();
+        let contains = |needle: &str| {
+            bytes
+                .windows(needle.len())
+                .any(|window| window == needle.as_bytes())
+        };
+        assert!(!contains("segredo-unico-xyzzy"));
+        assert!(!contains("plugh"));
     }
 
     #[test]

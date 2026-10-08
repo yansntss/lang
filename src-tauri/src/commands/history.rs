@@ -1,3 +1,7 @@
+use std::fs::{File, OpenOptions};
+use std::io::{ErrorKind, Write};
+use std::path::{Path, PathBuf};
+
 use tauri::{AppHandle, Manager, State};
 
 use crate::error::AppError;
@@ -11,9 +15,30 @@ where
     F: FnOnce(&SqliteHistory) -> Result<T, AppError> + Send + 'static,
 {
     let history = state.history()?;
-    tauri::async_runtime::spawn_blocking(move || work(&history))
+    let result = tauri::async_runtime::spawn_blocking(move || work(&history))
         .await
-        .map_err(|error| AppError::History(error.to_string()))?
+        .map_err(|error| AppError::History(error.to_string()))
+        .and_then(|outcome| outcome);
+    // O front só recebe a frase genérica; o detalhe (sem os textos) fica no log.
+    result.inspect_err(|error| log::warn!("falha no histórico: {error:?}"))
+}
+
+/// Quantos nomes tentar antes de desistir de exportar (arquivos `-2`, `-3`… já existentes).
+const MAX_EXPORT_ATTEMPTS: u32 = 50;
+
+/// Cria o arquivo da exportação sem nunca sobrescrever outro, e devolve o arquivo e o caminho.
+fn create_export_file(directory: &Path, now: i64) -> Result<(File, PathBuf), AppError> {
+    for attempt in 0..MAX_EXPORT_ATTEMPTS {
+        let path = directory.join(csv::file_name(now, attempt));
+        match OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(file) => return Ok((file, path)),
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(AppError::History(error.to_string())),
+        }
+    }
+    Err(AppError::History(
+        "muitos arquivos de exportação com o mesmo nome".into(),
+    ))
 }
 
 /// Guarda uma tradução confirmada pelo usuário (Enter ou Explicar). Não grava nada se o
@@ -106,8 +131,9 @@ pub async fn export_history(
 
     blocking(&state, move |history| {
         let content = csv::export(&history.all()?);
-        let path = directory.join(csv::file_name(now_ms()));
-        std::fs::write(&path, content).map_err(|error| AppError::History(error.to_string()))?;
+        let (mut file, path) = create_export_file(&directory, now_ms())?;
+        file.write_all(content.as_bytes())
+            .map_err(|error| AppError::History(error.to_string()))?;
         Ok(path.display().to_string())
     })
     .await

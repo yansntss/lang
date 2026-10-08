@@ -35,13 +35,19 @@ pub fn export(entries: &[HistoryEntry]) -> String {
     out
 }
 
-/// Nome do arquivo exportado, ex.: `traducoes-20231114-221320.csv`.
-pub fn file_name(now_ms: i64) -> String {
+/// Nome do arquivo exportado, ex.: `traducoes-20231114-221320.csv`. A partir da segunda
+/// tentativa (`attempt` > 0) leva um sufixo (`-2`, `-3`…), para nunca sobrescrever um arquivo.
+pub fn file_name(now_ms: i64, attempt: u32) -> String {
     let compact: String = iso_utc(now_ms)
         .chars()
         .filter(char::is_ascii_digit)
         .collect();
-    format!("traducoes-{}-{}.csv", &compact[..8], &compact[8..])
+    let suffix = if attempt == 0 {
+        String::new()
+    } else {
+        format!("-{}", attempt + 1)
+    };
+    format!("traducoes-{}-{}{suffix}.csv", &compact[..8], &compact[8..])
 }
 
 fn push_row(out: &mut String, fields: impl IntoIterator<Item = String>) {
@@ -53,7 +59,7 @@ fn push_row(out: &mut String, fields: impl IntoIterator<Item = String>) {
 /// Planilhas executam células que começam com `=`, `+`, `-` ou `@` como fórmula: um texto
 /// copiado de qualquer lugar poderia rodar código ao abrir o arquivo. O apóstrofo neutraliza.
 fn quote(field: &str) -> String {
-    let guard = if field.starts_with(['=', '+', '-', '@', '\t', '\r']) {
+    let guard = if field.starts_with(['=', '+', '-', '@', '\t', '\r', '\n']) {
         "'"
     } else {
         ""
@@ -142,7 +148,7 @@ mod tests {
 
     #[test]
     fn neutralizes_spreadsheet_formulas() {
-        for dangerous in ["=1+1", "+cmd", "-2", "@SUM(A1)", "\tx", "\rx"] {
+        for dangerous in ["=1+1", "+cmd", "-2", "@SUM(A1)", "\tx", "\rx", "\nx"] {
             let csv = export(&[entry(dangerous, "ok")]);
 
             assert!(
@@ -168,10 +174,21 @@ mod tests {
     }
 
     #[test]
-    fn builds_a_sortable_file_name() {
+    fn neutralizes_formulas_in_the_translation_column_too() {
+        let csv = export(&[entry("ok", "=HYPERLINK(\"http://x\")")]);
+
+        assert!(csv.contains("\"'=HYPERLINK(\"\"http://x\"\")\""));
+    }
+
+    #[test]
+    fn builds_a_sortable_file_name_with_a_suffix_for_retries() {
         assert_eq!(
-            file_name(1_700_000_000_000),
+            file_name(1_700_000_000_000, 0),
             "traducoes-20231114-221320.csv"
+        );
+        assert_eq!(
+            file_name(1_700_000_000_000, 1),
+            "traducoes-20231114-221320-2.csv"
         );
     }
 }
