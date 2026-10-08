@@ -2,16 +2,17 @@
 
 Atualizado ao fim de cada fase. Marcar `[x]` ao concluir.
 
-## Estado atual (2026-10-07) — retomar daqui
+## Estado atual (2026-10-08) — retomar daqui
 - Fases 0, 1 e 2 concluídas, revisadas, testadas manualmente pelo usuário e commitadas em `main`.
-- **Próximo: Fase 3 — Explicar com Claude.** Só funciona de verdade com uma chave da Anthropic
-  (o usuário tem apenas DeepL Free): construir e testar com mocks (`wiremock` + SSE) e deixar o
-  botão desabilitado, com dica, enquanto não houver chave. Planejar antes (`/ecc:plan fase 3`).
+- Fase 3 (Explicar com Claude) **implementada, revisada e testada com mocks**; falta só a
+  verificação manual com uma chave real da Anthropic (o usuário tem apenas DeepL Free). Sem
+  chave, o botão fica desabilitado, com dica.
+- **Próximo: Fase 4 — Histórico e aprendizado.** Planejar antes (`/ecc:plan fase 4`).
 - Decisões que o usuário ainda não tomou (detalhes nas notas da Fase 2):
   1. Manter VS Code/Cursor/IDEs JetBrains bloqueados na captura de seleção, ou liberar.
   2. Traduzir a seleção capturada automaticamente (como hoje) ou só após Enter.
-- Testes: 111 de Rust (+2 `#[ignore]` que usam o clipboard e o keychain reais:
-  `cargo test -- --ignored`) e 30 do front. `clippy -D warnings` e `fmt --check` limpos.
+- Testes: 150 de Rust (+2 `#[ignore]` que usam o clipboard e o keychain reais:
+  `cargo test -- --ignored`) e 40 do front. `clippy -D warnings` e `fmt --check` limpos.
 - Armadilhas de ambiente (também em `CLAUDE.md`): `cargo` fora do PATH do `powershell.exe`,
   git só funciona pelo Windows, e `tauri dev` recompila sozinho a cada alteração.
 
@@ -181,10 +182,45 @@ Ctrl+C, lista de bloqueio ampliada com classe da janela, tecla `T` do atalho, te
 por formato (64 MiB) e total (128 MiB), conteúdo sensível, relógio de segurança de 5 s.
 
 ### Fase 3 — Explicar com Claude (opcional em runtime)
-- [ ] `ClaudeClient` + testes SSE com `wiremock`
-- [ ] Prompt seguro (sem tools, `max_tokens` limitado, texto como dado)
-- [ ] `explain` com streaming; botão desabilitado sem chave
-- [ ] `ExplainPanel` renderizando texto puro
+- [x] `ClaudeClient` + testes SSE com `wiremock`
+- [x] Prompt seguro (sem tools, `max_tokens` limitado, texto como dado)
+- [x] `explain` com streaming; botão desabilitado sem chave
+- [x] `ExplainPanel` renderizando texto puro
+- [x] Cancelamento (`cancel_explain`, ao trocar o texto, ao ocultar o popup e ao reexibi-lo)
+
+Verificação manual (pendente: exige chave da Anthropic; `npm run tauri dev`):
+- [ ] Cadastrar a chave nas Configurações, traduzir um texto e clicar em "Explicar": o texto
+  aparece aos poucos, em português, e o botão volta a habilitar no fim
+- [ ] Sem chave: o botão aparece desabilitado, com a dica
+- [ ] Esc ou clicar fora durante a explicação interrompe a geração (conferir o consumo no console
+  da Anthropic)
+- [ ] Teste do `ClaudeClient` contra a API real (não escrito: sem chave para validar)
+
+Notas e decisões da Fase 3:
+- Modelo fixo `claude-haiku-5-5` (constante `MODEL`); configurável na Fase 5. `max_tokens` = 800.
+  Se a resposta bater no teto, o texto termina com "…". Sem `temperature`, por segurança com
+  modelos novos.
+- O botão só aparece depois de uma tradução que corresponde ao texto do campo, e o texto só vai
+  à Anthropic no clique (nunca automaticamente).
+- Streaming: `reqwest` `Response::chunk()` + parser SSE próprio (`services/sse.rs`, testado com
+  eventos cortados no meio e UTF-8 partido) e `tauri::ipc::Channel`. Não precisou de `futures-util`.
+- Prompt: `system` fixo mandando tratar o conteúdo de `<source_text>`/`<translation>` como dado;
+  `& < >` escapados para o texto não fechar a tag; sem `tools`.
+- Cancelamento: `ActiveExplain` guarda uma explicação por vez; iniciar outra, `cancel_explain`,
+  `hide_popup` ou um canal fechado abortam a tarefa. No front, `useExplain` descarta eventos de
+  execuções antigas.
+- Mensagens de erro `Network` e `Upstream` ficaram genéricas (antes citavam "tradução").
+- A capability do popup ganhou `allow-explain`, `allow-cancel-explain` e `allow-has-secret`
+  (só devolve booleano).
+
+Revisões da Fase 3 (rust-reviewer e security-reviewer): sem itens críticos ou altos. Corrigido:
+geração continuava depois de ocultar o popup (agora `hide_popup` cancela), canal fechado não
+parava a geração, resposta cortada por `max_tokens` parecia completa, `ClaudeClient::build`
+(override de URL) agora é privado ao módulo. Aceito/adiado (baixo risco): estouro do buffer SSE
+mostra "erro (200)"; evento final sem linha em branco no EOF é descartado; `find_blank_line`
+reescaneia o buffer (limitado a 1 MiB); sem intervalo mínimo entre explicações; entrada
+residual de `ActiveExplain` se a tarefa termina antes do `register` (inofensiva); a chave é uma
+`String` comum, sem `zeroize`.
 
 ### Fase 4 — Histórico e aprendizado
 - [ ] Schema + migrations (`user_version`), testes com `tempfile`
