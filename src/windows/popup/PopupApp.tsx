@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "re
 import { useExplain } from "../../hooks/useExplain";
 import { useHasSecret } from "../../hooks/useHasSecret";
 import { usePopupLifecycle } from "../../hooks/usePopupLifecycle";
+import { useTheme } from "../../hooks/useTheme";
 import { useTranslate } from "../../hooks/useTranslate";
 import { copyToClipboard, errorMessage, hidePopup, recordHistory } from "../../lib/tauri";
 import type { Translation } from "../../lib/types";
@@ -15,17 +16,23 @@ export default function PopupApp() {
   const [actionError, setActionError] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const lastRecorded = useRef<string | null>(null);
-  const result = useTranslate(text);
+  // Texto capturado que o usuário pediu para só traduzir depois do Enter (configurações).
+  const [held, setHeld] = useState(false);
+  const result = useTranslate(text, undefined, !held);
   const explanation = useExplain();
   const cancelExplanation = explanation.cancel;
   const canExplain = useHasSecret("anthropic");
+  useTheme();
 
   // Texto capturado da seleção do usuário (se houver) substitui o que estava no campo, e a
-  // tradução começa sozinha pelo mesmo caminho da digitação.
+  // tradução começa sozinha pelo mesmo caminho da digitação, a menos que o usuário tenha
+  // pedido para traduzir só depois do Enter.
   const reset = useCallback(
-    (prefill: string | null) => {
+    (prefill: string | null, autoTranslate: boolean = true) => {
       cancelExplanation();
       lastRecorded.current = null;
+      // Seleção em branco não tem o que traduzir: reter só a prenderia em "Enter traduz".
+      setHeld(prefill !== null && prefill.trim() !== "" && !autoTranslate);
       setText(prefill ?? "");
       setActionError(null);
       inputRef.current?.focus();
@@ -108,6 +115,11 @@ export default function PopupApp() {
     if (event.repeat) {
       return;
     }
+    // Com a tradução retida, o primeiro Enter só a libera; o seguinte copia.
+    if (held) {
+      setHeld(false);
+      return;
+    }
     void copyAndClose();
   };
 
@@ -125,11 +137,16 @@ export default function PopupApp() {
         onChange={(event) => {
           setText(event.target.value);
           setActionError(null);
+          setHeld(false);
         }}
         onKeyDown={handleKeyDown}
       />
       <section className="popup__result" aria-live="polite">
-        <TranslationResult state={result} />
+        {held ? (
+          <p className="popup__hint">Enter traduz · Esc fecha</p>
+        ) : (
+          <TranslationResult state={result} />
+        )}
         {currentTranslation && (
           <div className="popup__explain">
             <button

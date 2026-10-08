@@ -87,3 +87,41 @@
 .settings__feedback--success {
   color: var(--success);
 }
+
+.settings__section {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.settings__field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0;
+}
+
+.settings__field select {
+  min-width: 200px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+}
+
+.settings__check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 8px 0 0;
+}
+
+.settings kbd {
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  font: inherit;
+}

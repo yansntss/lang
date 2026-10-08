@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useHistory } from "../../hooks/useHistory";
+import { useTheme } from "../../hooks/useTheme";
 import {
   copyToClipboard,
   errorMessage,
@@ -26,6 +27,7 @@ export default function HistoryApp() {
   // Muda quando o histórico é apagado: o cartão de revisão é remontado e busca de novo.
   const [reviewVersion, setReviewVersion] = useState(0);
   const history = useHistory(query, favoritesOnly);
+  useTheme();
 
   useEffect(() => {
     let cancelled = false;

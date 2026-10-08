@@ -13,8 +13,11 @@
   font-size: 14px;
 }
 
+/* Tema "Sistema": segue o sistema. Os temas "Claro" e "Escuro" das configurações forçam um
+   dos dois com `data-theme` (ver `useTheme`). As cores escuras aparecem duas vezes porque o
+   CSS não tem como compartilhar o bloco entre a media query e o atributo. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #1e1f24;
     --fg: #ececf1;
     --muted: #9a9aa6;
@@ -25,6 +28,23 @@
     --danger: #ff7b72;
     --success: #7ee787;
   }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1e1f24;
+  --fg: #ececf1;
+  --muted: #9a9aa6;
+  --border: #34353c;
+  --surface: #27282e;
+  --accent: #6c9bff;
+  --accent-fg: #101114;
+  --danger: #ff7b72;
+  --success: #7ee787;
 }
 
 html,

@@ -9,14 +9,15 @@ Atualizado ao fim de cada fase. Marcar `[x]` ao concluir.
   chave, o botão fica desabilitado, com dica.
 - Fase 4 (Histórico e aprendizado) **implementada, revisada e testada**; falta só a
   verificação manual (checklist na seção da Fase 4).
-- **Próximo: Fase 5 — Configurações.** Planejar antes (`/ecc:plan fase 5`).
-- Decisões que o usuário ainda não tomou (detalhes nas notas das Fases 2 e 4):
-  1. Manter VS Code/Cursor/IDEs JetBrains bloqueados na captura de seleção, ou liberar.
-  2. Traduzir a seleção capturada automaticamente (como hoje) ou só após Enter.
-  3. Histórico ligado por padrão grava texto selecionado em claro desde o primeiro Enter: manter
-     assim, ou mostrar um aviso na primeira gravação / começar desligado.
-- Testes: 185 de Rust (+2 `#[ignore]` que usam o clipboard e o keychain reais:
-  `cargo test -- --ignored`) e 75 do front. `clippy -D warnings` e `fmt --check` limpos.
+- Fase 5 (Configurações) **implementada, revisada e testada**; falta só a verificação manual
+  (checklist na seção da Fase 5).
+- **Próximo: Fase 6 — Distribuição (Windows).** Planejar antes (`/ecc:plan fase 6`).
+- As duas decisões da Fase 2 viraram opções nas Configurações (editores na captura: desligada;
+  traduzir a seleção sozinha: ligada). Continua em aberto:
+  - Histórico ligado por padrão grava texto selecionado em claro desde o primeiro Enter:
+    manter assim, ou mostrar um aviso na primeira gravação / começar desligado.
+- Testes: 240 de Rust (+2 `#[ignore]` que usam o clipboard e o keychain reais:
+  `cargo test -- --ignored`) e 120 do front. `clippy -D warnings` e `fmt --check` limpos.
 - Armadilhas de ambiente (também em `CLAUDE.md`): `cargo` fora do PATH do `powershell.exe`,
   git só funciona pelo Windows, e `tauri dev` recompila sozinho a cada alteração.
 
@@ -286,10 +287,79 @@ Pendências conhecidas (baixo risco, adiadas):
   dão erro; a busca de um item só acha o que o `fold` cobre (letras latinas comuns).
 
 ### Fase 5 — Configurações
-- [ ] `Settings` persistido (atalho, idiomas, autostart, histórico, modelo, tema)
-- [ ] `set_shortcut` com rollback em conflito
-- [ ] Gerenciamento de chaves ("configurada ✓", trocar, remover, testar)
-- [ ] `autostart`
+- [x] `Settings` persistido (atalho, idiomas, autostart, histórico, modelo, tema)
+- [x] `set_shortcut` com rollback em conflito
+- [x] Gerenciamento de chaves ("configurada ✓", trocar, remover, testar)
+- [x] `autostart`
+- [x] Opções que fecham as decisões da Fase 2 (editores na captura; traduzir a seleção só no Enter)
+
+Verificação manual (pendente; `npm run tauri dev`):
+- [ ] Configurações → Atalho global → "Alterar atalho", apertar `Ctrl+Alt+K`: o novo atalho abre
+  o tradutor, o antigo deixa de abrir, e ao reiniciar o app o novo continua valendo
+- [ ] Escolher um atalho que outro app já usa (ex.: um da própria Windows): o erro aparece e o
+  atalho antigo continua funcionando
+- [ ] `Ctrl+C`, `Alt+F4` ou só uma letra são recusados
+- [ ] Com o atalho novo, selecionar texto em outro app e abrir o tradutor: a seleção é capturada
+  (a espera da tecla solta usa a tecla nova, sem "digitar" a letra no app de origem)
+- [ ] "Testar chave" do DeepL mostra o uso do mês; sem rede ou com chave errada mostra o erro
+- [ ] "Testar chave" da Anthropic (precisa de chave real; só testado com mocks)
+- [ ] "Iniciar com o Windows": ligar, reiniciar a sessão e ver o app na bandeja; desligar
+- [ ] Tema Claro/Escuro/Sistema muda popup, histórico e configurações (ao receber foco)
+- [ ] Inglês EN-GB e português PT-PT: a tradução usa a variante escolhida e o histórico a grava
+- [ ] Modelo Sonnet: o "Explicar" usa o modelo escolhido (precisa de chave real)
+- [ ] "Traduzir a seleção assim que abre" desligado: o texto capturado aparece no campo, nada é
+  enviado ao DeepL, "Enter traduz" e o segundo Enter copia
+- [ ] "Capturar em editores" ligado: a captura funciona no VS Code/Cursor (e continua bloqueada
+  em terminais); desligado, volta a ser bloqueada
+
+Notas e decisões da Fase 5:
+- **Persistência sem `tauri-plugin-store`** (desvio da tabela de decisões): um `settings.json` na
+  pasta de dados do app, lido e gravado só pelo Rust (`serde`). Escrita atômica (arquivo
+  temporário com `sync_all` + renomeação); a memória só muda depois de gravar. Arquivo ausente
+  usa os padrões; ilegível, com valor fora da lista ou não lido é guardado como `settings.json.bak`
+  e os padrões entram no lugar. Campos novos/ausentes recebem o padrão.
+- `history_enabled` continua na tabela `preferences` do SQLite; o autostart não é salvo: é lido
+  da chave `Run` do Windows (`tauri-plugin-autostart`, chamado só pelo Rust).
+- Atalho: texto validado no Rust (`platform/accelerator.rs`): modificadores Ctrl/Alt/Shift/Win e
+  tecla A–Z, 0–9 ou F1–F12. Para letras e números exige dois entre Ctrl, Alt e Shift (ou Win);
+  teclas de função aceitam um modificador, menos `Alt+F4`. Isso barra `Ctrl+C`/`Ctrl+V`/`Alt+A`,
+  que engoliriam essas teclas em todos os apps e quebrariam a captura. A troca é
+  `unregister(antigo)` → `register(novo)` e, se falhar, o antigo volta; o novo só é salvo depois
+  de registrado, e se o salvamento falhar o registro volta ao antigo.
+- A tecla principal do atalho (antes fixa em `VK_T`) e a liberação de editores ficam em
+  `platform/capture_config.rs` (atômicos lidos pela thread da captura).
+- Idiomas: `TargetLang` ganhou `PT-PT` e `EN-GB`; `translate_with` recebe as variantes. O
+  histórico aceita as quatro. A detecção da origem não mudou.
+- Modelo do Explicar: lista fechada (`claude-haiku-5-5`, `claude-sonnet-5-5`); o ID vem de um
+  enum, nunca do front, e entra no `Prompt`. `update_settings` usa um tipo de entrada sem
+  valores padrão e sem campos extras (payload incompleto é erro, não zera preferências).
+- "Testar chave" sem gastar cota: DeepL `GET /v2/usage` (mostra "uso neste mês"), Anthropic
+  `GET /v1/models`. Mesmos cuidados dos outros clientes (HTTPS, sem redirect, cabeçalho sensível).
+- Editores (VS Code, Cursor, JetBrains, Zed, VSCodium…) foram separados dos terminais na lista de
+  bloqueio; liberar editores nunca libera terminais, SSH, consoles remotos nem app desconhecido.
+- A janela de configurações aplica as alterações uma de cada vez (ref síncrono) e junta as
+  respostas como trechos, para uma seção não desfazer a outra. Tema: `data-theme` em `base.css`;
+  cada janela o lê ao abrir e ao receber foco.
+- Capabilities: `settings` recebe os comandos novos; `popup` e `history` recebem só
+  `allow-get-settings` (tema; o popup lê `autoTranslate` do evento de reset).
+
+Revisões da Fase 5 (rust-reviewer, security-reviewer, react-reviewer): sem itens críticos. O que
+bloqueava e foi corrigido: atalhos que roubam teclas comuns, alterações seguidas que se
+atropelavam, gravação do atalho que prendia o teclado, duplo envio e resposta tardia na chave,
+tema com respostas fora de ordem, seleção em branco retida, `update_settings` com padrões,
+gravação sem `sync_all`, arquivo ilegível sem backup, atalho salvo inválido que não era corrigido,
+falhas de gravação sem log, mais editores na lista.
+Pendências conhecidas (baixo risco, adiadas):
+- Um valor inválido em `settings.json` (ex.: versão futura) descarta o arquivo inteiro, inclusive o
+  atalho, em vez de aplicar campo a campo; o `.bak` preserva o original.
+- `apply_shortcut` não é serializado (hoje o comando é síncrono e só a janela de configurações o
+  chama); se o rollback também falhar, a dica da bandeja não avisa.
+- Flash do tema forçado ao abrir uma janela (o tema só é aplicado após o primeiro `get_settings`);
+  o popup/histórico abertos e sem foco só trocam de tema quando recebem foco.
+- Gravação do atalho continua só por teclado físico (sem campo de texto alternativo); em teclado
+  ABNT2 o texto mostrado usa a letra da tecla física, e `Ctrl+Alt` equivale ao AltGr.
+- Foco dos selects não é restaurado após salvar; `Preferences` sem teste de payload antigo do
+  front além do tipo de entrada; teste de `capture_config` depende de estado global.
 
 ### Fase 6 — Distribuição (Windows)
 - [ ] Capabilities mínimas por janela + `/ecc:security-review`

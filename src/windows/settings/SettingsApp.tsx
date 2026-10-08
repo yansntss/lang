@@ -1,40 +1,32 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { deleteSecret, errorMessage, hasSecret, setSecret } from "../../lib/tauri";
+import { useCallback, useEffect, useState } from "react";
+import { applyTheme } from "../../hooks/useTheme";
+import { errorMessage, getSettings } from "../../lib/tauri";
+import type { SettingsView } from "../../lib/types";
 import "../../styles/base.css";
+import GeneralSection from "./GeneralSection";
+import SecretSection from "./SecretSection";
+import ShortcutSection from "./ShortcutSection";
 import "./settings.css";
 
-type KeyStatus = "checking" | "configured" | "missing";
-
-interface Feedback {
-  kind: "success" | "error";
-  text: string;
-}
-
-const STATUS_LABELS: Record<KeyStatus, string> = {
-  checking: "Verificando…",
-  configured: "Chave configurada ✓",
-  missing: "Chave não configurada",
-};
+const DEEPL_HINT =
+  "A chave fica guardada no Gerenciador de Credenciais do Windows e nunca é exibida de volta. " +
+  "Chaves do plano gratuito terminam em :fx.";
+const ANTHROPIC_HINT =
+  "Opcional: só o botão Explicar usa. A chave fica guardada no Gerenciador de Credenciais do " +
+  "Windows e nunca é exibida de volta.";
 
 export default function SettingsApp() {
-  const [status, setStatus] = useState<KeyStatus>("checking");
-  const [keyInput, setKeyInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [settings, setSettings] = useState<SettingsView | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    hasSecret("deepl").then(
-      (configured) => {
-        if (!cancelled) {
-          setStatus(configured ? "configured" : "missing");
-        }
+    getSettings().then(
+      (loaded) => {
+        if (!cancelled) setSettings(loaded);
       },
-      (error: unknown) => {
-        if (!cancelled) {
-          setStatus("missing");
-          setFeedback({ kind: "error", text: errorMessage(error) });
-        }
+      (failure: unknown) => {
+        if (!cancelled) setLoadError(errorMessage(failure));
       },
     );
     return () => {
@@ -42,92 +34,34 @@ export default function SettingsApp() {
     };
   }, []);
 
-  const save = async (event: FormEvent) => {
-    event.preventDefault();
-    const value = keyInput;
-    if (busy || value.trim() === "") {
-      return;
-    }
+  // Cada comando devolve só o trecho que mexeu; juntar sobre o estado mais recente impede que
+  // a resposta de uma seção desfaça a de outra.
+  const handleChanged = useCallback((patch: Partial<SettingsView>) => {
+    setSettings((current) => (current ? { ...current, ...patch } : current));
+  }, []);
 
-    // A chave sai do estado do componente antes mesmo da chamada: o front nunca a retém.
-    setKeyInput("");
-    setBusy(true);
-    setFeedback(null);
-    try {
-      await setSecret("deepl", value);
-      setStatus("configured");
-      setFeedback({ kind: "success", text: "Chave salva." });
-    } catch (error: unknown) {
-      // O campo já foi limpo (a chave não fica retida), então avisa que é preciso digitar de novo.
-      setFeedback({ kind: "error", text: `${errorMessage(error)} Digite a chave novamente.` });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const remove = async () => {
-    setBusy(true);
-    setFeedback(null);
-    try {
-      await deleteSecret("deepl");
-      setStatus("missing");
-      setFeedback({ kind: "success", text: "Chave removida." });
-    } catch (error: unknown) {
-      setFeedback({ kind: "error", text: errorMessage(error) });
-    } finally {
-      setBusy(false);
-    }
-  };
+  const theme = settings?.theme;
+  useEffect(() => {
+    if (theme) applyTheme(theme);
+  }, [theme]);
 
   return (
     <main className="settings">
       <h1>Configurações</h1>
-      <section aria-labelledby="deepl-title">
-        <h2 id="deepl-title">DeepL</h2>
-        <p className="settings__status">{STATUS_LABELS[status]}</p>
-
-        <form className="settings__form" onSubmit={save}>
-          <label htmlFor="deepl-key">Chave da API do DeepL</label>
-          <div className="settings__row">
-            <input
-              id="deepl-key"
-              className="settings__input"
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              value={keyInput}
-              onChange={(event) => setKeyInput(event.target.value)}
-            />
-            <button
-              type="submit"
-              className="settings__button settings__button--primary"
-              disabled={busy || keyInput.trim() === ""}
-            >
-              Salvar chave
-            </button>
-          </div>
-        </form>
-
-        {status === "configured" && (
-          <button type="button" className="settings__button" onClick={remove} disabled={busy}>
-            Remover chave
-          </button>
-        )}
-
-        {feedback && (
-          <p
-            role={feedback.kind === "error" ? "alert" : "status"}
-            className={`settings__feedback settings__feedback--${feedback.kind}`}
-          >
-            {feedback.text}
-          </p>
-        )}
-
-        <p className="settings__hint">
-          A chave fica guardada no Gerenciador de Credenciais do Windows e nunca é exibida de
-          volta. Chaves do plano gratuito terminam em :fx.
+      <SecretSection kind="deepl" title="DeepL" article="do" hint={DEEPL_HINT} />
+      <SecretSection kind="anthropic" title="Anthropic" article="da" hint={ANTHROPIC_HINT} />
+      {settings ? (
+        <>
+          <ShortcutSection shortcut={settings.shortcut} onChanged={handleChanged} />
+          <GeneralSection settings={settings} onChanged={handleChanged} />
+        </>
+      ) : loadError ? (
+        <p role="alert" className="settings__feedback settings__feedback--error">
+          {loadError}
         </p>
-      </section>
+      ) : (
+        <p className="settings__hint">Carregando as configurações…</p>
+      )}
     </main>
   );
 }

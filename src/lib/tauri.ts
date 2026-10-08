@@ -4,8 +4,11 @@ import type {
   ExplainEvent,
   HistoryEntry,
   HistoryRecord,
+  KeyCheck,
   PopupResetPayload,
+  Preferences,
   SecretKind,
+  SettingsView,
   Translation,
 } from "./types";
 
@@ -108,12 +111,38 @@ export function deleteSecret(kind: SecretKind): Promise<void> {
   return invoke<void>("delete_secret", { kind });
 }
 
+/** Confere a chave sem gastar a cota; o DeepL informa também o uso do mês. */
+export function testSecret(kind: SecretKind): Promise<KeyCheck> {
+  return invoke<KeyCheck>("test_secret", { kind });
+}
+
+export function getSettings(): Promise<SettingsView> {
+  return invoke<SettingsView>("get_settings");
+}
+
+export function updateSettings(preferences: Preferences): Promise<SettingsView> {
+  return invoke<SettingsView>("update_settings", { preferences });
+}
+
+/** Troca o atalho global (ex.: `"Ctrl+Alt+T"`). Se falhar, o atual continua valendo. */
+export function setShortcut(accelerator: string): Promise<SettingsView> {
+  return invoke<SettingsView>("set_shortcut", { accelerator });
+}
+
+export function setAutostart(enabled: boolean): Promise<void> {
+  return invoke<void>("set_autostart", { enabled });
+}
+
 /**
  * O popup foi exibido de novo. `prefill` é o texto que o usuário tinha selecionado em outro
  * app, ou `null` quando não houve captura. Devolve a função que cancela a escuta.
  */
-export function onPopupReset(handler: (prefill: string | null) => void): Promise<() => void> {
-  return listen<PopupResetPayload>(POPUP_RESET_EVENT, (event) => handler(event.payload.prefill));
+export function onPopupReset(
+  handler: (prefill: string | null, autoTranslate?: boolean) => void,
+): Promise<() => void> {
+  return listen<PopupResetPayload>(POPUP_RESET_EVENT, (event) =>
+    handler(event.payload.prefill, event.payload.autoTranslate ?? true),
+  );
 }
 
 /** Extrai uma mensagem exibível de um erro do backend ou de qualquer valor lançado. */

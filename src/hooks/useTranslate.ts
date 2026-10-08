@@ -14,19 +14,22 @@ export type TranslateState =
 
 /**
  * Traduz `text` após uma pausa na digitação. Respostas de pedidos antigos são descartadas,
- * então o resultado exibido sempre corresponde ao último texto enviado.
+ * então o resultado exibido sempre corresponde ao último texto enviado. Com `enabled` falso
+ * nada é enviado (o texto ainda não foi confirmado pelo usuário).
  */
 export function useTranslate(
   text: string,
   delayMs: number = TRANSLATE_DEBOUNCE_MS,
+  enabled: boolean = true,
 ): TranslateState {
   const [state, setState] = useState<TranslateState>(IDLE);
   // O efeito depende do texto aparado: espaços nas pontas não reiniciam o debounce nem
   // geram um novo pedido idêntico (a cota do DeepL Free é por caractere).
   const sourceText = text.trim();
+  const idle = sourceText === "" || !enabled;
 
   useEffect(() => {
-    if (sourceText === "") {
+    if (idle) {
       setState(IDLE);
       return;
     }
@@ -52,8 +55,9 @@ export function useTranslate(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [sourceText, delayMs]);
+  }, [sourceText, delayMs, idle]);
 
-  // Texto vazio é sempre "idle", sem esperar o efeito: evita piscar o resultado antigo após um reset.
-  return sourceText === "" ? IDLE : state;
+  // Sem texto (ou retido) é sempre "idle", sem esperar o efeito: evita piscar o resultado antigo
+  // após um reset.
+  return idle ? IDLE : state;
 }
