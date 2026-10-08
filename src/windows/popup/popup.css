@@ -50,3 +50,40 @@
   margin: 0;
   color: var(--danger);
 }
+
+.popup__explain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.popup__explain-button {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.popup__explain-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.popup__explain .popup__hint {
+  margin: 0;
+}
+
+.popup__explanation {
+  margin-top: 8px;
+}
+
+.popup__explanation-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}

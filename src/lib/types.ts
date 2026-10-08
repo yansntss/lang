@@ -14,6 +14,12 @@ export interface AppErrorDto {
 
 export type SecretKind = "deepl" | "anthropic";
 
+/** Evento do canal de `explain` (espelha `ExplainEvent` do backend). */
+export type ExplainEvent =
+  | { kind: "delta"; text: string }
+  | { kind: "done" }
+  | { kind: "error"; code: string; message: string };
+
 /** Corpo do evento `popup://reset`. */
 export interface PopupResetPayload {
   prefill: string | null;

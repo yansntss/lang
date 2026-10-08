@@ -1,6 +1,6 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { PopupResetPayload, SecretKind, Translation } from "./types";
+import type { ExplainEvent, PopupResetPayload, SecretKind, Translation } from "./types";
 
 // Único ponto do front que fala com o backend. Nenhum comando devolve chaves de API.
 
@@ -14,6 +14,24 @@ export function translate(text: string): Promise<Translation> {
 
 export function copyToClipboard(text: string): Promise<void> {
   return invoke<void>("copy_to_clipboard", { text });
+}
+
+/**
+ * Pede a explicação de `text` e `translation`. O texto chega em `onEvent` (deltas, depois
+ * `done` ou `error`). Devolve o id da explicação, usado para cancelá-la.
+ */
+export function explain(
+  text: string,
+  translation: string,
+  onEvent: (event: ExplainEvent) => void,
+): Promise<number> {
+  const channel = new Channel<ExplainEvent>();
+  channel.onmessage = onEvent;
+  return invoke<number>("explain", { text, translation, onEvent: channel });
+}
+
+export function cancelExplain(id: number): Promise<void> {
+  return invoke<void>("cancel_explain", { id });
 }
 
 export function hidePopup(): Promise<void> {
