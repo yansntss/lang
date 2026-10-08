@@ -1,5 +1,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::thread;
+use std::time::{Duration, Instant};
 
 use tauri::plugin::TauriPlugin;
 use tauri::{AppHandle, Wry};
@@ -63,14 +65,37 @@ fn prefill_from(outcome: Result<CaptureOutcome, AppError>) -> Option<String> {
     }
 }
 
+/// Uma captura que passa disso está travada (por exemplo, o dono do clipboard não responde a um
+/// pedido de renderização). Daí em diante o atalho abre o popup mesmo assim, em vez de ficar
+/// morto até reiniciar o app.
+const CAPTURE_WATCHDOG: Duration = Duration::from_secs(5);
+
+fn capture_is_stale(started: Instant, now: Instant) -> bool {
+    now.saturating_duration_since(started) >= CAPTURE_WATCHDOG
+}
+
 /// Segurar o atalho repete `Pressed`; enquanto uma captura roda, os demais são ignorados.
 static CAPTURE_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
+/// Quando a captura em andamento começou, para o relógio de segurança.
+static CAPTURE_STARTED_AT: Mutex<Option<Instant>> = Mutex::new(None);
+
+fn set_capture_started(started: Option<Instant>) {
+    // Com o lock envenenado o relógio simplesmente deixa de valer; a captura segue normal.
+    if let Ok(mut slot) = CAPTURE_STARTED_AT.lock() {
+        *slot = started;
+    }
+}
+
+fn capture_started() -> Option<Instant> {
+    CAPTURE_STARTED_AT.lock().ok().and_then(|slot| *slot)
+}
 
 /// Libera a trava ao sair do escopo, inclusive se a thread de captura entrar em pânico.
 struct InFlight;
 
 impl Drop for InFlight {
     fn drop(&mut self) {
+        set_capture_started(None);
         CAPTURE_IN_FLIGHT.store(false, Ordering::SeqCst);
     }
 }
@@ -80,8 +105,15 @@ impl Drop for InFlight {
 /// de o popup roubar o foco.
 fn open_with_selection(app: AppHandle) {
     if CAPTURE_IN_FLIGHT.swap(true, Ordering::SeqCst) {
+        // Capturas curtas só repetem o `Pressed`; uma que passou do prazo está travada, e o
+        // atalho não pode ficar morto por causa dela.
+        if capture_started().is_some_and(|started| capture_is_stale(started, Instant::now())) {
+            log::warn!("captura da seleção travada; abrindo o popup sem ela");
+            log_failure("abrir o tradutor", show_near_cursor(&app, None));
+        }
         return;
     }
+    set_capture_started(Some(Instant::now()));
 
     let worker_app = app.clone();
     let spawned = thread::Builder::new()
@@ -96,6 +128,7 @@ fn open_with_selection(app: AppHandle) {
         });
 
     if let Err(error) = spawned {
+        set_capture_started(None);
         CAPTURE_IN_FLIGHT.store(false, Ordering::SeqCst);
         log::error!("não foi possível iniciar a captura da seleção: {error}");
         log_failure("abrir o tradutor", show_near_cursor(&app, None));
@@ -106,6 +139,24 @@ fn open_with_selection(app: AppHandle) {
 mod tests {
     use super::*;
     use crate::services::capture::SkipReason;
+
+    #[test]
+    fn a_capture_is_not_stale_before_the_watchdog_expires() {
+        let started = Instant::now();
+
+        assert!(!capture_is_stale(started, started + Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn a_capture_is_stale_once_the_watchdog_expires() {
+        let started = Instant::now();
+
+        assert!(capture_is_stale(started, started + CAPTURE_WATCHDOG));
+        assert!(capture_is_stale(
+            started,
+            started + CAPTURE_WATCHDOG + Duration::from_secs(30)
+        ));
+    }
 
     #[test]
     fn prefills_with_the_captured_text() {
@@ -138,6 +189,7 @@ mod tests {
             SkipReason::ModifiersHeld,
             SkipReason::UnsupportedClipboard,
             SkipReason::BlockedApplication,
+            SkipReason::ClipboardChanged,
         ] {
             assert_eq!(prefill_from(Ok(CaptureOutcome::Skipped(reason))), None);
         }

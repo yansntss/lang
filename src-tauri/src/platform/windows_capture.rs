@@ -12,7 +12,8 @@ use windows::core::{w, PWSTR};
 use windows::Win32::Foundation::{CloseHandle, GlobalFree, HANDLE, HGLOBAL, HWND};
 use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData,
-    GetClipboardSequenceNumber, OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
+    GetClipboardSequenceNumber, IsClipboardFormatAvailable, OpenClipboard,
+    RegisterClipboardFormatW, SetClipboardData,
 };
 use windows::Win32::System::Memory::{
     GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
@@ -23,17 +24,17 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
-    KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
+    KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT, VK_T,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DestroyWindow, GetForegroundWindow, GetWindowThreadProcessId, HWND_MESSAGE,
-    WINDOW_EX_STYLE, WINDOW_STYLE,
+    CreateWindowExW, DestroyWindow, GetClassNameW, GetForegroundWindow, GetWindowThreadProcessId,
+    HWND_MESSAGE, WINDOW_EX_STYLE, WINDOW_STYLE,
 };
 
 use crate::error::AppError;
 use crate::services::capture::{
     capture_selection, is_capture_blocked, CaptureOutcome, ClipboardFormat, ClipboardPort,
-    ClipboardSnapshot, InputPort, SkipReason, Sleeper,
+    ClipboardSnapshot, InputPort, Sleeper,
 };
 
 const CF_BITMAP: u32 = 2;
@@ -51,16 +52,23 @@ const CF_PRIVATE_AND_GDI_RANGE: std::ops::RangeInclusive<u32> = 0x200..=0x3FF;
 const VK_C: VIRTUAL_KEY = VIRTUAL_KEY(0x43);
 const KEY_DOWN_BIT: u16 = 0x8000;
 
+/// Tentativas para abrir o clipboard em leituras (~50 ms no total): se estiver ocupado, é
+/// melhor desistir da captura do que atrasar o popup.
 const OPEN_CLIPBOARD_ATTEMPTS: u32 = 10;
+/// Tentativas ao devolver o clipboard do usuário (~500 ms): gerenciadores de clipboard e o
+/// histórico do Windows o seguram logo depois de uma mudança, e perder a restauração apagaria
+/// o conteúdo dele.
+const RESTORE_OPEN_ATTEMPTS: u32 = 100;
 const OPEN_CLIPBOARD_RETRY_DELAY: Duration = Duration::from_millis(5);
 const PROCESS_PATH_CAPACITY: usize = 1024;
+const CLASS_NAME_CAPACITY: usize = 256;
+/// Teto de um formato e do clipboard inteiro: acima disso o snapshot é recusado em vez de
+/// duplicar centenas de MB na memória.
+const MAX_FORMAT_BYTES: usize = 64 * 1024 * 1024;
+const MAX_SNAPSHOT_BYTES: usize = 128 * 1024 * 1024;
 
 /// Copia a seleção do app em foco, a menos que ele seja um terminal ou desconhecido.
 pub fn capture_foreground_selection() -> Result<CaptureOutcome, AppError> {
-    if is_capture_blocked(foreground_process_path().as_deref()) {
-        return Ok(CaptureOutcome::Skipped(SkipReason::BlockedApplication));
-    }
-
     let clipboard = WindowsClipboard::new()?;
     capture_selection(&clipboard, &WindowsInput, &ThreadSleeper)
 }
@@ -110,13 +118,13 @@ impl Drop for OwnerWindow {
 struct ClipboardGuard;
 
 impl ClipboardGuard {
-    fn open(owner: HWND) -> Result<Self, AppError> {
-        for attempt in 1..=OPEN_CLIPBOARD_ATTEMPTS {
+    fn open(owner: HWND, attempts: u32) -> Result<Self, AppError> {
+        for attempt in 1..=attempts {
             // SAFETY: `owner` é uma janela válida da thread atual; o `Drop` fecha o clipboard.
             if unsafe { OpenClipboard(Some(owner)) }.is_ok() {
                 return Ok(Self);
             }
-            if attempt < OPEN_CLIPBOARD_ATTEMPTS {
+            if attempt < attempts {
                 // Outro app pode estar com o clipboard aberto por alguns milissegundos.
                 thread::sleep(OPEN_CLIPBOARD_RETRY_DELAY);
             }
@@ -148,7 +156,11 @@ impl WindowsClipboard {
     }
 
     fn open(&self) -> Result<ClipboardGuard, AppError> {
-        ClipboardGuard::open(self.owner.0)
+        ClipboardGuard::open(self.owner.0, OPEN_CLIPBOARD_ATTEMPTS)
+    }
+
+    fn open_for_restore(&self) -> Result<ClipboardGuard, AppError> {
+        ClipboardGuard::open(self.owner.0, RESTORE_OPEN_ATTEMPTS)
     }
 }
 
@@ -162,6 +174,7 @@ impl ClipboardPort for WindowsClipboard {
         let _clipboard = self.open()?;
         let mut formats = Vec::new();
         let mut seen_any = false;
+        let mut total_bytes = 0usize;
         let mut format = 0;
 
         loop {
@@ -177,6 +190,10 @@ impl ClipboardPort for WindowsClipboard {
                 FormatKind::Unsupported => return Ok(ClipboardSnapshot::Unsupported),
                 FormatKind::Copy => match copy_format(format) {
                     Some(data) if !data.is_empty() => {
+                        total_bytes = total_bytes.saturating_add(data.len());
+                        if total_bytes > MAX_SNAPSHOT_BYTES {
+                            return Ok(ClipboardSnapshot::Unsupported);
+                        }
                         formats.push(ClipboardFormat { id: format, data });
                     }
                     Some(_) => {}
@@ -196,6 +213,9 @@ impl ClipboardPort for WindowsClipboard {
 
     fn read_text(&self) -> Result<Option<String>, AppError> {
         let _clipboard = self.open()?;
+        if is_marked_sensitive() {
+            return Ok(None);
+        }
         Ok(copy_format(CF_UNICODETEXT).map(|bytes| decode_utf16_text(&bytes)))
     }
 
@@ -208,7 +228,7 @@ impl ClipboardPort for WindowsClipboard {
             }
         };
 
-        let _clipboard = self.open()?;
+        let _clipboard = self.open_for_restore()?;
         // SAFETY: o clipboard está aberto por `_clipboard`.
         unsafe { EmptyClipboard() }.map_err(|error| AppError::Clipboard(error.to_string()))?;
 
@@ -254,6 +274,9 @@ fn copy_format(format: u32) -> Option<Vec<u8>> {
     // válido por `GlobalSize` bytes até o `GlobalUnlock`; a cópia termina antes dele.
     unsafe {
         let size = GlobalSize(global);
+        if size > MAX_FORMAT_BYTES {
+            return None;
+        }
         let pointer = GlobalLock(global);
         if pointer.is_null() {
             return None;
@@ -325,10 +348,19 @@ fn decode_utf16_text(bytes: &[u8]) -> String {
 pub struct WindowsInput;
 
 impl InputPort for WindowsInput {
-    fn modifiers_pressed(&self) -> bool {
-        [VK_CONTROL, VK_MENU, VK_SHIFT, VK_LWIN, VK_RWIN]
+    /// Modificadores e a tecla principal do atalho (`T`): segurar o `T` depois de soltar
+    /// Ctrl/Alt faria o auto-repeat digitar "t" no app de origem. Quando o atalho passar a ser
+    /// configurável (Fase 5), a tecla principal deve vir da configuração.
+    fn shortcut_keys_pressed(&self) -> bool {
+        [VK_CONTROL, VK_MENU, VK_SHIFT, VK_LWIN, VK_RWIN, VK_T]
             .into_iter()
             .any(is_key_down)
+    }
+
+    fn is_target_allowed(&self) -> bool {
+        let process_path = foreground_process_path();
+        let window_class = foreground_window_class();
+        !is_capture_blocked(process_path.as_deref(), window_class.as_deref())
     }
 
     fn send_copy(&self) -> Result<(), AppError> {
@@ -392,6 +424,41 @@ impl Sleeper for ThreadSleeper {
 // ---------------------------------------------------------------------------------------
 // App em foco
 // ---------------------------------------------------------------------------------------
+
+/// Classe da janela em foco, usada como segunda camada além do nome do executável.
+fn foreground_window_class() -> Option<String> {
+    // SAFETY: consulta sem argumentos.
+    let window = unsafe { GetForegroundWindow() };
+    if window.0.is_null() {
+        return None;
+    }
+
+    let mut buffer = [0u16; CLASS_NAME_CAPACITY];
+    // SAFETY: `buffer` é um slice válido que vive durante a chamada.
+    let length = unsafe { GetClassNameW(window, &mut buffer) };
+    let length = usize::try_from(length).ok().filter(|&length| length > 0)?;
+    Some(String::from_utf16_lossy(&buffer[..length]))
+}
+
+/// Conteúdo que o app de origem marcou para ficar fora do histórico e da nuvem do clipboard
+/// (gerenciadores de senhas fazem isso). Enviar um segredo ao DeepL não faz sentido, então
+/// esse conteúdo nunca é lido. Exige o clipboard aberto.
+fn is_marked_sensitive() -> bool {
+    // SAFETY: os nomes são literais UTF-16 terminados em nulo.
+    let (exclude, can_include) = unsafe {
+        (
+            RegisterClipboardFormatW(w!("ExcludeClipboardContentFromMonitorProcessing")),
+            RegisterClipboardFormatW(w!("CanIncludeInClipboardHistory")),
+        )
+    };
+
+    // SAFETY: o clipboard está aberto pelo chamador; a consulta só lê.
+    if exclude != 0 && unsafe { IsClipboardFormatAvailable(exclude) }.is_ok() {
+        return true;
+    }
+    can_include != 0
+        && copy_format(can_include).is_some_and(|data| data.len() >= 4 && data[..4] == [0; 4])
+}
 
 /// Caminho do executável da janela em foco. `None` se não der para saber, ou se a janela for
 /// do próprio app (não se captura de si mesmo).
@@ -514,15 +581,21 @@ mod tests {
         let before = clipboard.sequence();
         clipboard.restore(&sample).unwrap();
         let changed = clipboard.sequence() != before;
-        let text = clipboard.read_text().unwrap();
+        let read_back = clipboard.read_text().unwrap();
         let after = clipboard.snapshot().unwrap();
         clipboard.restore(&original).unwrap();
 
         assert!(changed);
-        assert_eq!(text.as_deref(), Some("Olá, teste"));
+        // A restauração marca o conteúdo como fora do histórico; por isso ele conta como
+        // sensível e `read_text` se recusa a lê-lo.
+        assert_eq!(read_back, None);
         let ClipboardSnapshot::Formats(formats) = after else {
             panic!("esperava formatos no clipboard");
         };
+        assert!(formats
+            .iter()
+            .any(|format| format.id == CF_UNICODETEXT
+                && decode_utf16_text(&format.data) == "Olá, teste"));
         assert!(formats
             .iter()
             .any(|format| format.id == custom && format.data == [1, 2, 3, 4]));

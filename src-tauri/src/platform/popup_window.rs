@@ -49,6 +49,10 @@ pub fn show_near_cursor(app: &AppHandle, prefill: Option<&str>) -> Result<(), Ap
 
     // Atalho repetido (ou segurado) com o popup já em uso: não apaga o que o usuário digitou.
     if window.is_visible().map_err(window_error)? && window.is_focused().map_err(window_error)? {
+        if prefill.is_some() {
+            // Só o fato vai para o log, nunca o texto do usuário.
+            log::info!("popup já estava em uso; o texto capturado foi descartado");
+        }
         return Ok(());
     }
 
