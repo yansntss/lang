@@ -3,6 +3,8 @@
 const APP_COMMANDS: &[&str] = &[
     "translate",
     "copy_to_clipboard",
+    "explain",
+    "cancel_explain",
     "hide_popup",
     "set_secret",
     "has_secret",

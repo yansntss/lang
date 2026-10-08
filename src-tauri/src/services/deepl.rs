@@ -124,7 +124,7 @@ impl Translator for DeepLClient {
 }
 
 /// O detalhe fica só no `Debug` (log). A URL é removida por precaução.
-fn network_error(error: reqwest::Error) -> AppError {
+pub(crate) fn network_error(error: reqwest::Error) -> AppError {
     AppError::Network(error.without_url().to_string())
 }
 

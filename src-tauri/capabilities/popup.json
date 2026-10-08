@@ -8,6 +8,9 @@
     "core:event:allow-unlisten",
     "allow-translate",
     "allow-copy-to-clipboard",
+    "allow-explain",
+    "allow-cancel-explain",
+    "allow-has-secret",
     "allow-hide-popup"
   ]
 }

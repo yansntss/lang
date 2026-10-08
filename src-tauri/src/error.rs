@@ -29,10 +29,10 @@ pub enum AppError {
     #[error("Muitas requisições. Aguarde alguns segundos e tente de novo.")]
     RateLimited,
 
-    #[error("Não foi possível conectar ao serviço de tradução. Verifique sua conexão.")]
+    #[error("Não foi possível conectar ao serviço. Verifique sua conexão.")]
     Network(String),
 
-    #[error("O serviço de tradução respondeu com erro ({0}).")]
+    #[error("O serviço respondeu com erro ({0}).")]
     Upstream(u16),
 
     #[error("Não foi possível copiar para a área de transferência.")]
@@ -131,7 +131,7 @@ mod tests {
             (
                 AppError::Upstream(500),
                 "upstream",
-                "O serviço de tradução respondeu com erro (500).",
+                "O serviço respondeu com erro (500).",
             ),
         ];
 

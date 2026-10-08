@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cancel-explain"
+description = "Enables the cancel_explain command without any pre-configured scope."
+commands.allow = ["cancel_explain"]
+
+[[permission]]
+identifier = "deny-cancel-explain"
+description = "Denies the cancel_explain command without any pre-configured scope."
+commands.deny = ["cancel_explain"]

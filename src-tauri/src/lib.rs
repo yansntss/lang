@@ -33,6 +33,8 @@ pub fn run() -> tauri::Result<()> {
         .invoke_handler(tauri::generate_handler![
             commands::translate::translate,
             commands::translate::copy_to_clipboard,
+            commands::explain::explain,
+            commands::explain::cancel_explain,
             commands::window::hide_popup,
             commands::secrets::set_secret,
             commands::secrets::has_secret,
