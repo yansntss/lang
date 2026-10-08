@@ -11,13 +11,15 @@ Atualizado ao fim de cada fase. Marcar `[x]` ao concluir.
   verificação manual (checklist na seção da Fase 4).
 - Fase 5 (Configurações) **implementada, revisada e testada**; falta só a verificação manual
   (checklist na seção da Fase 5).
-- **Próximo: Fase 6 — Distribuição (Windows).** Planejar antes (`/ecc:plan fase 6`).
+- Fase 6a (distribuição: instalador NSIS, ícone, README, CI, auditoria, falha de inicialização)
+  **feita e testada localmente**; falta só instalar e conferir (checklist na seção da Fase 6).
+- **Próximo: 6b (atualizador e release)**, que depende de uma decisão sobre o repositório privado.
 - As duas decisões da Fase 2 viraram opções nas Configurações (editores na captura: desligada;
   traduzir a seleção sozinha: ligada). Continua em aberto:
   - Histórico ligado por padrão grava texto selecionado em claro desde o primeiro Enter:
     manter assim, ou mostrar um aviso na primeira gravação / começar desligado.
-- Testes: 240 de Rust (+2 `#[ignore]` que usam o clipboard e o keychain reais:
-  `cargo test -- --ignored`) e 120 do front. `clippy -D warnings` e `fmt --check` limpos.
+- Testes: 246 de Rust (+2 `#[ignore]` que usam o clipboard e o keychain reais:
+  `cargo test -- --ignored`) e 126 do front. `clippy -D warnings` e `fmt --check` limpos.
 - Armadilhas de ambiente (também em `CLAUDE.md`): `cargo` fora do PATH do `powershell.exe`,
   git só funciona pelo Windows, e `tauri dev` recompila sozinho a cada alteração.
 
@@ -130,9 +132,9 @@ redirects/HTTPS no cliente DeepL, 401 → chave inválida, validação de caract
 Pendências conhecidas (fora da Fase 1):
 - `keyring` só tem a feature `windows-native`; em macOS/Linux cairia num store em memória.
   Aceito porque o escopo é Windows. Revisar se o escopo mudar.
-- Falha de inicialização em release é silenciosa (`windows_subsystem` + `eprintln!`) e
-  `panic = "abort"` não descarrega logs. Tratar na Fase 6 (diálogo nativo ou log em arquivo).
-- Rodar `cargo audit` no Windows na Fase 6.
+- ~~Falha de inicialização em release é silenciosa e `panic = "abort"` não descarrega logs.~~
+  Resolvido na Fase 6a (`fatal.rs`).
+- ~~Rodar `cargo audit` no Windows na Fase 6.~~ Feito na Fase 6a.
 
 ### Fase 2 — Captura de texto selecionado
 - [x] Portas (`ClipboardPort`, `InputPort`, `Sleeper`) e `capture_selection` testada com fakes
@@ -362,11 +364,80 @@ Pendências conhecidas (baixo risco, adiadas):
   front além do tipo de entrada; teste de `capture_config` depende de estado global.
 
 ### Fase 6 — Distribuição (Windows)
-- [ ] Capabilities mínimas por janela + `/ecc:security-review`
-- [ ] Ícones finais; bundle NSIS/MSI
-- [ ] CI Windows (test, clippy, fmt, build)
-- [ ] `tauri-plugin-updater` com chave própria + GitHub Releases
-- [ ] README com instalação e aviso do SmartScreen
+Dividida em **6a** (sem depender do GitHub; feita) e **6b** (atualizador e release; pendente).
+
+6a:
+- [x] Capabilities mínimas por janela + revisão de segurança final
+- [x] Ícones finais; bundle NSIS (por usuário, sem administrador)
+- [x] CI Windows (test, clippy, fmt, build) + auditoria
+- [x] README com instalação e aviso do SmartScreen
+- [x] Falha de inicialização visível e pânico em log
+- [x] Versão única nos três arquivos (`npm run check:version`)
+
+6b (pendente):
+- [ ] `tauri-plugin-updater` com chave própria + GitHub Releases + workflow de release
+  (bloqueado: o repositório `github.com/yansntss/lang` é **privado**; veja as notas)
+
+Verificação manual (pendente; o instalador está em
+`src-tauri/target/release/bundle/nsis/Tradutor_0.1.0_x64-setup.exe`, 3,42 MiB):
+- [ ] Fechar o `npm run tauri dev` (o `single-instance` encaminharia o segundo app ao primeiro)
+- [ ] Executar o instalador: o SmartScreen avisa "editor desconhecido"; **Mais informações →
+  Executar assim mesmo**; a instalação não pede administrador e fala português
+- [ ] Atalho do menu Iniciar "Tradutor" com o ícone novo; ícone da bandeja legível
+- [ ] Primeira execução abre as Configurações (sem chave do DeepL); salvar a chave e testar
+- [ ] `Ctrl+Alt+T` abre o popup e traduz; o histórico e as configurações continuam os mesmos de
+  antes (a pasta de dados é a mesma: o `identifier` não mudou)
+- [ ] "Iniciar com o Windows" liga e o app sobe com a sessão
+- [ ] Desinstalar pelo Windows: o app some; as chaves continuam no Gerenciador de Credenciais
+  (documentado no README) e a opção de apagar os dados funciona
+- [ ] Forçar uma falha de inicialização (ex.: tornar a pasta de dados ilegível) mostra a caixa de
+  erro e grava `%LOCALAPPDATA%\com.yansa.lang-app\startup-error.log`
+
+Notas e decisões da Fase 6a:
+- **Instalador só NSIS, por usuário** (`installMode: currentUser`, idioma `PortugueseBR`): sem
+  WiX/MSI (que exige administrador e baixa o WiX). O nome visível agora é **Tradutor**; o
+  `identifier` `com.yansa.lang-app` não mudou, porque a pasta de dados, o histórico e as chaves do
+  Gerenciador de Credenciais dependem dele (há um teste em `fatal.rs` que o confere).
+- **Ícone** gerado por `scripts/make-icon.ps1` (dois balões, "EN" e "PT") a partir de
+  `src-tauri/icon-source.png`; os tamanhos saem de `npm run tauri icon src-tauri/icon-source.png`
+  (as pastas `android/` e `ios/` que o comando cria foram removidas). É um ícone simples, não
+  arte final: para trocar, rode o mesmo comando com outro PNG de 1024 px.
+- **Falha de inicialização:** `fatal.rs` mostra uma caixa de mensagem (`MessageBoxW`) e grava o
+  detalhe em `startup-error.log` (a caixa só cita o arquivo). O `panic hook` registra só o local
+  do pânico e descarrega o log antes do `abort`; a mensagem do pânico é omitida de propósito,
+  porque pode conter o texto que o usuário estava traduzindo.
+- **Auditoria:** `cargo audit` (instalado nesta fase) não achou vulnerabilidades; os 2 avisos
+  (`proc-macro-error` sem manutenção e `glib` com solidez) são dependências só de Linux (GTK) que
+  não entram no grafo do Windows (`cargo tree --target x86_64-pc-windows-msvc -i …` não imprime
+  nada). `npm audit`: 0 vulnerabilidades.
+- **CI** (`.github/workflows/ci.yml`): job Windows (checagem de versão, `tsc`, testes, build do
+  front, `fmt`, `clippy -D warnings`, `cargo test`) e job de auditoria. Token só de leitura, sem
+  segredos, ações **fixadas por commit** (o comentário traz a versão) e `cargo-audit@0.22.2`.
+  Ainda não foi executado no GitHub: os mesmos comandos passaram localmente.
+- O binário de release carrega a configuração inteira embutida, inclusive o `devCsp` e o
+  `devUrl` (`localhost:1420`); eles só valem em `tauri dev`. Não há fixtures de teste nem chaves
+  de exemplo no binário.
+- Sem arquivo de licença por enquanto (README: "todos os direitos reservados").
+
+Revisão de segurança final (security-reviewer): sem itens críticos ou altos; o histórico git não
+tem segredos. Corrigido: `.gitignore` (certificados, bancos, `.claude/settings.json`), ações do CI
+fixadas. Pendências (baixo risco ou só se o repositório virar público):
+- **Tornar o repositório público expõe** o e-mail do autor e o hostname `nome-da-maquina`
+  (autor `root`) em todos os commits, além de `CLAUDE.md` e `.claude/rules/**`, que citam caminhos
+  locais. Se for público: reescrever o histórico (`git filter-repo --mailmap`), ou publicar um
+  repositório novo sem histórico, e decidir se `CLAUDE.md` e `.claude/rules` ficam fora.
+- `startup-error.log` cresce sem limite e é aberto sem checar link simbólico (risco baixo: pasta
+  do próprio usuário); `style-src 'unsafe-inline'` continua no CSP de release.
+
+Notas da 6b (atualizador), a decidir:
+- O atualizador consulta uma URL pública de `latest.json`. Com o repositório **privado**, o
+  GitHub Releases exige autenticação, e embutir um token no app seria um vazamento. Opções:
+  tornar o repositório público (veja os riscos acima), hospedar os arquivos de atualização em
+  outro lugar público (GitHub Pages de um repositório público só para releases, ou um bucket), ou
+  não ter atualizador e distribuir cada versão manualmente.
+- Com o atualizador: `tauri-plugin-updater` chamado só pelo Rust, chave pública no
+  `tauri.conf.json`, chave privada só como segredo do GitHub (com backup fora do repositório),
+  seção "Sobre e atualizações" nas Configurações e workflow de release por tag `v*`.
 
 ## Riscos
 | Risco | Mitigação |
