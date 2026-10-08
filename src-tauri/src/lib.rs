@@ -71,6 +71,17 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     capture_config::set_allow_editors(settings.preferences.capture_in_editors);
     let accelerator = shortcut::startup_accelerator(&settings.shortcut)?;
     capture_config::set_main_key(accelerator.virtual_key);
+    if accelerator.label != settings.shortcut {
+        // O salvo estava inválido e o de fábrica entrou no lugar: corrige o arquivo, para a
+        // janela de configurações mostrar o atalho que realmente vale.
+        if let Err(error) = app
+            .state::<AppState>()
+            .settings
+            .update_shortcut(&accelerator.label)
+        {
+            log::warn!("não foi possível corrigir o atalho salvo: {error:?}");
+        }
+    }
 
     let tray = tray::create(app.handle())?;
     if !shortcut::register_initial(app.handle(), &accelerator) {

@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{PoisonError, RwLock};
 
@@ -13,7 +14,9 @@ pub struct SettingsStore {
     current: RwLock<Settings>,
 }
 
+/// O detalhe (mensagem de E/S, sem segredos) vai ao log: o front só vê uma frase genérica.
 fn settings_error(error: impl std::fmt::Display) -> AppError {
+    log::error!("falha ao salvar as configurações: {error}");
     AppError::Settings(error.to_string())
 }
 
@@ -29,7 +32,10 @@ impl SettingsStore {
             }),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Settings::default(),
             Err(error) => {
+                // Existe mas não pôde ser lido: guarda uma cópia antes que a próxima gravação
+                // o substitua pelos padrões.
                 log::error!("não foi possível ler as configurações: {error}");
+                keep_backup(path);
                 Settings::default()
             }
         };
@@ -69,12 +75,23 @@ impl SettingsStore {
         }
         let json = serde_json::to_string_pretty(settings).map_err(settings_error)?;
         let temporary = self.path.with_extension("json.tmp");
-        fs::write(&temporary, json).map_err(settings_error)?;
+        // `sync_all` antes da renomeação: numa queda de energia o arquivo final nunca fica
+        // vazio ou pela metade.
+        write_synced(&temporary, json.as_bytes()).map_err(|error| {
+            let _ = fs::remove_file(&temporary);
+            settings_error(error)
+        })?;
         fs::rename(&temporary, &self.path).map_err(|error| {
             let _ = fs::remove_file(&temporary);
             settings_error(error)
         })
     }
+}
+
+fn write_synced(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut file = fs::File::create(path)?;
+    file.write_all(bytes)?;
+    file.sync_all()
 }
 
 fn keep_backup(path: &Path) {
@@ -179,6 +196,22 @@ mod tests {
             "{ isto não é json"
         );
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn a_file_that_cannot_be_read_is_kept_as_a_backup_before_anything_overwrites_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = path_in(&dir);
+        // UTF-8 inválido: a leitura como texto falha antes mesmo do parse.
+        fs::write(&path, [0xFF, 0xFE, 0x00, 0x7B]).unwrap();
+
+        let store = SettingsStore::load(&path);
+
+        assert_eq!(store.get(), Settings::default());
+        assert_eq!(
+            fs::read(dir.path().join("settings.json.bak")).unwrap(),
+            vec![0xFF, 0xFE, 0x00, 0x7B]
+        );
     }
 
     #[test]

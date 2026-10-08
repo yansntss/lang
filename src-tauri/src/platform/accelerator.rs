@@ -49,6 +49,7 @@ pub fn parse(text: &str) -> Result<Accelerator, AppError> {
     }
 
     let (key_label, code_name, virtual_key) = parse_key(key_text)?;
+    reject_common_shortcuts(modifiers, &key_label)?;
     let code: Code = code_name
         .parse()
         .map_err(|_| invalid("Essa tecla não é aceita no atalho."))?;
@@ -58,6 +59,33 @@ pub fn parse(text: &str) -> Result<Accelerator, AppError> {
         shortcut: Shortcut::new(Some(modifiers), code),
         virtual_key,
     })
+}
+
+/// Um atalho global tira a tecla de todos os apps. `Ctrl+C`, `Ctrl+V` ou `Alt+A` sozinhos
+/// engoliriam copiar, colar e os menus em qualquer lugar (inclusive a captura da seleção, que
+/// simula Ctrl+C), e o rollback não ajuda: o sistema aceita o registro.
+///
+/// Para letras e números exige duas teclas entre Ctrl, Alt e Shift, ou a tecla Win; teclas de
+/// função aceitam um modificador, exceto `Alt+F4` (fechar janela).
+fn reject_common_shortcuts(modifiers: Modifiers, key: &str) -> Result<(), AppError> {
+    let is_function_key = key.starts_with('F') && key.len() > 1;
+    if is_function_key {
+        if key == "F4" && modifiers.contains(Modifiers::ALT) {
+            return Err(invalid("Alt+F4 fecha janelas. Escolha outro atalho."));
+        }
+        return Ok(());
+    }
+
+    let common_modifiers = [Modifiers::CONTROL, Modifiers::ALT, Modifiers::SHIFT]
+        .into_iter()
+        .filter(|flag| modifiers.contains(*flag))
+        .count();
+    if common_modifiers < 2 && !modifiers.contains(Modifiers::SUPER) {
+        return Err(invalid(
+            "Esse atalho já é usado pelos apps. Combine dois entre Ctrl, Alt e Shift, ou use Win.",
+        ));
+    }
+    Ok(())
 }
 
 /// Devolve (texto canônico da tecla, nome do `Code`, código virtual).
@@ -146,6 +174,45 @@ mod tests {
         assert_eq!(function.label, "Ctrl+F12");
         assert_eq!(function.virtual_key, 0x7B);
         assert_eq!(first_function.virtual_key, 0x70);
+    }
+
+    #[test]
+    fn rejects_shortcuts_that_would_steal_everyday_keys() {
+        for text in [
+            "Ctrl+C",
+            "Ctrl+V",
+            "Ctrl+X",
+            "Ctrl+Z",
+            "Ctrl+A",
+            "Ctrl+S",
+            "Alt+A",
+            "Alt+F4",
+            "Ctrl+Alt+F4",
+            "Win+Alt+F4",
+            "Alt+1",
+            "Ctrl+5",
+        ] {
+            let error = parse(text).unwrap_err();
+
+            assert_eq!(error.code(), "invalid_input", "{text}");
+        }
+    }
+
+    #[test]
+    fn accepts_safe_combinations() {
+        for text in [
+            "Ctrl+Alt+T",
+            "Ctrl+Shift+J",
+            "Alt+Shift+K",
+            "Ctrl+Alt+Shift+Q",
+            "Win+5",
+            "Win+Shift+Z",
+            "Ctrl+F5",
+            "Alt+F2",
+            "Win+F9",
+        ] {
+            assert!(parse(text).is_ok(), "{text}");
+        }
     }
 
     #[test]

@@ -6,7 +6,7 @@ use crate::error::AppError;
 use crate::platform::{accelerator, capture_config, shortcut, tray};
 use crate::secrets::SecretKind;
 use crate::services::deepl::Usage;
-use crate::settings::{Preferences, Settings};
+use crate::settings::{PreferencesUpdate, Settings};
 use crate::state::AppState;
 
 /// O que a janela de configurações mostra: o salvo mais o que só o sistema sabe.
@@ -47,9 +47,9 @@ pub fn get_settings(app: AppHandle, state: State<'_, AppState>) -> SettingsView 
 pub fn update_settings(
     app: AppHandle,
     state: State<'_, AppState>,
-    preferences: Preferences,
+    preferences: PreferencesUpdate,
 ) -> Result<SettingsView, AppError> {
-    let settings = state.settings.update_preferences(preferences)?;
+    let settings = state.settings.update_preferences(preferences.into())?;
     capture_config::set_allow_editors(settings.preferences.capture_in_editors);
     Ok(view(&app, settings))
 }

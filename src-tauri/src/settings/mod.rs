@@ -104,6 +104,33 @@ impl Preferences {
     }
 }
 
+/// O que `update_settings` recebe do front. Ao contrário de [`Preferences`] (que aceita campos
+/// ausentes para ler arquivos de versões antigas), aqui todos os campos são obrigatórios e
+/// nenhum desconhecido é aceito: um payload incompleto não pode zerar preferências em silêncio.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PreferencesUpdate {
+    theme: Theme,
+    english_variant: EnglishVariant,
+    portuguese_variant: PortugueseVariant,
+    explain_model: ExplainModel,
+    capture_in_editors: bool,
+    auto_translate_selection: bool,
+}
+
+impl From<PreferencesUpdate> for Preferences {
+    fn from(update: PreferencesUpdate) -> Self {
+        Self {
+            theme: update.theme,
+            english_variant: update.english_variant,
+            portuguese_variant: update.portuguese_variant,
+            explain_model: update.explain_model,
+            capture_in_editors: update.capture_in_editors,
+            auto_translate_selection: update.auto_translate_selection,
+        }
+    }
+}
+
 /// Tudo o que é persistido. O atalho fica à parte das preferências porque trocá-lo mexe no
 /// sistema (`set_shortcut`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -178,6 +205,44 @@ mod tests {
     fn model_ids_are_the_ones_sent_to_the_api() {
         assert_eq!(ExplainModel::Haiku.id(), "claude-haiku-5-5");
         assert_eq!(ExplainModel::Sonnet.id(), "claude-sonnet-5-5");
+    }
+
+    #[test]
+    fn an_update_needs_every_field_and_accepts_no_unknown_one() {
+        let complete = serde_json::to_value(Preferences::default()).unwrap();
+        assert!(serde_json::from_value::<PreferencesUpdate>(complete.clone()).is_ok());
+
+        let partial = serde_json::json!({ "theme": "dark" });
+        assert!(serde_json::from_value::<PreferencesUpdate>(partial).is_err());
+
+        let mut with_extra = complete;
+        with_extra["unexpected"] = serde_json::json!(true);
+        assert!(serde_json::from_value::<PreferencesUpdate>(with_extra).is_err());
+    }
+
+    #[test]
+    fn an_update_converts_field_for_field() {
+        let update: PreferencesUpdate = serde_json::from_value(serde_json::json!({
+            "theme": "dark",
+            "englishVariant": "EN-GB",
+            "portugueseVariant": "PT-PT",
+            "explainModel": "claude-sonnet-5-5",
+            "captureInEditors": true,
+            "autoTranslateSelection": false
+        }))
+        .unwrap();
+
+        assert_eq!(
+            Preferences::from(update),
+            Preferences {
+                theme: Theme::Dark,
+                english_variant: EnglishVariant::EnGb,
+                portuguese_variant: PortugueseVariant::PtPt,
+                explain_model: ExplainModel::Sonnet,
+                capture_in_editors: true,
+                auto_translate_selection: false,
+            }
+        );
     }
 
     #[test]
