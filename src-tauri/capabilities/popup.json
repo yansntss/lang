@@ -11,6 +11,7 @@
     "allow-explain",
     "allow-cancel-explain",
     "allow-has-secret",
+    "allow-record-history",
     "allow-hide-popup"
   ]
 }

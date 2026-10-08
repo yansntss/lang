@@ -35,6 +35,16 @@ pub fn run() -> tauri::Result<()> {
             commands::translate::copy_to_clipboard,
             commands::explain::explain,
             commands::explain::cancel_explain,
+            commands::history::record_history,
+            commands::history::list_history,
+            commands::history::delete_history,
+            commands::history::clear_history,
+            commands::history::toggle_favorite,
+            commands::history::export_history,
+            commands::history::get_history_enabled,
+            commands::history::set_history_enabled,
+            commands::history::next_review,
+            commands::history::mark_reviewed,
             commands::window::hide_popup,
             commands::secrets::set_secret,
             commands::secrets::has_secret,
@@ -44,7 +54,8 @@ pub fn run() -> tauri::Result<()> {
 }
 
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    app.manage(AppState::new()?);
+    let data_dir = app.path().app_data_dir()?;
+    app.manage(AppState::new(&data_dir)?);
 
     let tray = tray::create(app.handle())?;
     if !shortcut::register_default(app.handle()) {

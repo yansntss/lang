@@ -43,6 +43,9 @@ pub enum AppError {
 
     #[error("Não foi possível capturar o texto selecionado.")]
     Capture(String),
+
+    #[error("Não foi possível acessar o histórico.")]
+    History(String),
 }
 
 impl AppError {
@@ -59,6 +62,7 @@ impl AppError {
             Self::Clipboard(_) => "clipboard",
             Self::Window(_) => "window",
             Self::Capture(_) => "capture",
+            Self::History(_) => "history",
         }
     }
 }
@@ -161,6 +165,11 @@ mod tests {
                 "capture",
                 "Não foi possível capturar o texto selecionado.",
             ),
+            (
+                AppError::History("no such table: history".into()),
+                "history",
+                "Não foi possível acessar o histórico.",
+            ),
         ];
 
         for (error, code, message) in cases {
@@ -168,7 +177,7 @@ mod tests {
 
             assert!(json.contains(&format!(r#""code":"{code}""#)));
             assert!(json.contains(message));
-            assert!(!json.contains("0x5") && !json.contains("HWND"));
+            assert!(!json.contains("0x5") && !json.contains("HWND") && !json.contains("table"));
         }
     }
 

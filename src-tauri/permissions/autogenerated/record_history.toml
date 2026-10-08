@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-record-history"
+description = "Enables the record_history command without any pre-configured scope."
+commands.allow = ["record_history"]
+
+[[permission]]
+identifier = "deny-record-history"
+description = "Denies the record_history command without any pre-configured scope."
+commands.deny = ["record_history"]

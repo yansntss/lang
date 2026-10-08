@@ -3,6 +3,7 @@ pub mod capture;
 pub mod claude;
 pub mod deepl;
 pub mod explain;
+pub mod history;
 pub mod lang_detect;
 pub mod sse;
 pub mod translation;
