@@ -84,6 +84,8 @@ Verificação manual (pendente, não automatizável; rodar `npm run tauri dev`):
 - [ ] Popup recebe foco ao abrir (o Windows pode recusar `set_focus`) e não fecha sozinho logo após abrir
 - [ ] Esc fecha, Enter copia e fecha, clicar fora oculta, Alt+F4 no popup só oculta
 - [ ] Segunda execução do app não abre outra instância
+- [ ] "Configurações" pela bandeja (criar janela dentro do handler do tray pode travar no Windows)
+- [ ] Atalho repetido com o popup aberto não apaga o texto digitado
 - [ ] A chave aparece em `cmdkey /list` e não aparece em `%LOCALAPPDATA%\com.yansa.lang-app\logs`
 
 Notas e desvios do plano original:
@@ -96,6 +98,23 @@ Notas e desvios do plano original:
   `json` é feature própria. Plugins Tauri fixados em `2` (a linha `3.x` ainda é alpha).
 - Testes do popup usam timers reais: `user-event` trava com fake timers do vitest.
 - Mensagens de erro do backend são genéricas; o detalhe técnico fica só no `Debug` (log).
+
+Revisões da Fase 1 (rust-reviewer, security-reviewer, react-reviewer): sem itens críticos ou
+altos; chave não chega ao JS, logs ou erros; capabilities mínimas por janela. Corrigido:
+popup preso sem foco após `BLUR_GRACE`, fallback de monitor, atalho repetido apagando o texto,
+redirects/HTTPS no cliente DeepL, 401 → chave inválida, validação de caracteres na chave,
+`Debug` do `InMemoryStore`, CSP (`base-uri`, `form-action`, `object-src`, `frame-ancestors`),
+`.env` no `.gitignore`, foco ao reexibir, debounce com `trim`, Enter repetido, Esc em IME.
+`npm audit`: 0 vulnerabilidades (`cargo audit` não está instalado).
+
+Pendências conhecidas (fora da Fase 1):
+- `keyring` só tem a feature `windows-native`; em macOS/Linux cairia num store em memória.
+  Aceito porque o escopo é Windows. Revisar se o escopo mudar.
+- Falha de inicialização em release é silenciosa (`windows_subsystem` + `eprintln!`) e
+  `panic = "abort"` não descarrega logs. Tratar na Fase 6 (diálogo nativo ou log em arquivo).
+- Janela de configurações aberta pela bandeja não foi exercitada (ver checklist).
+- Captura do texto selecionado é a Fase 2; hoje o atalho só abre o popup vazio.
+- Rodar `cargo audit` no Windows na Fase 6.
 
 ### Fase 2 — Captura de texto selecionado
 - [ ] `ClipboardPort` + sequência salvar/copiar/ler/restaurar testada com fake
