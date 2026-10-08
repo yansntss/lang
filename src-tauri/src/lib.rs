@@ -18,7 +18,7 @@ pub fn run() -> tauri::Result<()> {
     tauri::Builder::default()
         // A instância única precisa ser o primeiro plugin registrado.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            log_failure("abrir o tradutor", show_near_cursor(app));
+            log_failure("abrir o tradutor", show_near_cursor(app, None));
         }))
         .plugin(
             tauri_plugin_log::Builder::new()

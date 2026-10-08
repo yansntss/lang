@@ -11,8 +11,14 @@ use super::window_error;
 use crate::error::AppError;
 
 pub const POPUP_LABEL: &str = "popup";
-/// Enviado ao front a cada exibição: limpar o texto e focar o campo.
+/// Enviado ao front a cada exibição: limpar o texto, focar o campo e, se houver, preencher.
 pub const EVENT_RESET: &str = "popup://reset";
+
+/// Corpo do evento `popup://reset`. `prefill` é o texto capturado da seleção do usuário.
+#[derive(Clone, serde::Serialize)]
+struct ResetPayload<'a> {
+    prefill: Option<&'a str>,
+}
 const CURSOR_OFFSET_LOGICAL: f64 = 12.0;
 
 /// Instante da última exibição, usado para ignorar blurs transitórios (ver `BLUR_GRACE`).
@@ -35,7 +41,8 @@ impl PopupState {
 }
 
 /// Posiciona o popup perto do cursor (dentro do monitor onde ele está), exibe e dá foco.
-pub fn show_near_cursor(app: &AppHandle) -> Result<(), AppError> {
+/// `prefill` é o texto capturado da seleção, entregue ao front junto do reset.
+pub fn show_near_cursor(app: &AppHandle, prefill: Option<&str>) -> Result<(), AppError> {
     let window = app
         .get_webview_window(POPUP_LABEL)
         .ok_or_else(|| AppError::Window("janela do popup não encontrada".into()))?;
@@ -85,7 +92,7 @@ pub fn show_near_cursor(app: &AppHandle) -> Result<(), AppError> {
     }
 
     app.state::<PopupState>().mark_shown();
-    app.emit_to(POPUP_LABEL, EVENT_RESET, ())
+    app.emit_to(POPUP_LABEL, EVENT_RESET, ResetPayload { prefill })
         .map_err(window_error)?;
     window.show().map_err(window_error)?;
     let focus_result = window.set_focus().map_err(window_error);
@@ -142,4 +149,26 @@ fn hide(window: &Window) {
 
 fn round_to_i32(value: f64) -> i32 {
     value.round() as i32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reset_payload_carries_the_captured_text() {
+        let json = serde_json::to_string(&ResetPayload {
+            prefill: Some("olá mundo"),
+        })
+        .unwrap();
+
+        assert_eq!(json, r#"{"prefill":"olá mundo"}"#);
+    }
+
+    #[test]
+    fn reset_payload_without_capture_serializes_prefill_as_null() {
+        let json = serde_json::to_string(&ResetPayload { prefill: None }).unwrap();
+
+        assert_eq!(json, r#"{"prefill":null}"#);
+    }
 }

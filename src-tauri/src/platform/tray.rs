@@ -24,7 +24,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<TrayIcon> {
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
-            MENU_OPEN => log_failure("abrir o tradutor", show_near_cursor(app)),
+            MENU_OPEN => log_failure("abrir o tradutor", show_near_cursor(app, None)),
             MENU_SETTINGS => log_failure("abrir as configurações", settings_window::open(app)),
             MENU_QUIT => app.exit(0),
             _ => {}
@@ -36,7 +36,10 @@ pub fn create(app: &AppHandle) -> tauri::Result<TrayIcon> {
                 ..
             } = event
             {
-                log_failure("abrir o tradutor", show_near_cursor(tray.app_handle()));
+                log_failure(
+                    "abrir o tradutor",
+                    show_near_cursor(tray.app_handle(), None),
+                );
             }
         });
 

@@ -16,7 +16,7 @@ pub fn plugin() -> TauriPlugin<Wry> {
     tauri_plugin_global_shortcut::Builder::new()
         .with_handler(|app, _shortcut, event| {
             if event.state() == ShortcutState::Pressed {
-                log_failure("abrir o tradutor", show_near_cursor(app));
+                log_failure("abrir o tradutor", show_near_cursor(app, None));
             }
         })
         .build()
