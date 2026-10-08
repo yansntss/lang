@@ -26,3 +26,20 @@ dist-ssr
 # Secrets
 .env
 .env.*
+!.env.example
+
+# Certificados e chaves de assinatura (instalador, atualizador): nunca no repositório
+*.pfx
+*.p12
+*.pem
+*.key
+
+# Bancos e preferências locais do app (ficam em %APPDATA%, mas por segurança)
+*.db
+*.sqlite
+*.sqlite3
+settings.json.bak
+
+# Configuração local do Claude Code (a pasta .claude/rules é versionada)
+.claude/settings.json
+.claude/settings.local.json
