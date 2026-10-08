@@ -33,6 +33,8 @@ pub enum SkipReason {
     ModifiersHeld,
     /// Capturar destruiria o conteúdo atual do clipboard.
     UnsupportedClipboard,
+    /// O app em foco é um terminal (ou desconhecido): Ctrl+C ali interrompe processos.
+    BlockedApplication,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -5,6 +5,8 @@ pub mod popup_window;
 pub mod settings_window;
 pub mod shortcut;
 pub mod tray;
+#[cfg(windows)]
+pub mod windows_capture;
 
 /// Registra no log a falha de uma ação disparada por evento do sistema (atalho, bandeja),
 /// onde não há ninguém para receber o erro. O `Debug` não contém segredos.
