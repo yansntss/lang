@@ -1,6 +1,9 @@
 # Tradutor por atalho
 
-App desktop Tauri v2 (Rust + React/TS) para Windows, macOS e Linux.
+App desktop Tauri v2 (Rust + React/TS).
+Escopo atual: **Windows** (decisão do usuário). O código procura continuar compilável em
+macOS/Linux, mas não há testes nem suporte nesses sistemas (ex.: a captura de seleção e o
+keychain só funcionam no Windows).
 Objetivo: o usuário está aprendendo inglês (PC em inglês) e quer traduzir rápido.
 
 ## Fluxo principal
@@ -24,6 +27,15 @@ Atalho global → caixa flutuante perto do cursor → tradução EN↔PT-BR.
   - dev: npm run tauri dev
   - testes Rust: cd src-tauri; cargo test
   - lint Rust: cd src-tauri; cargo clippy -- -D warnings; cargo fmt --check
+  - testes do front: npm test; build: npm run build
+- `cargo`/`rustc` ficam em C:\Users\yansa\.cargo\bin e NÃO estão no PATH do powershell.exe chamado
+  pelo WSL. Prefixar: `$env:PATH += ";C:\Users\yansa\.cargo\bin"`.
+- git também deve rodar pelo Windows (`powershell.exe -c "cd C:\www\pessoal\lang; git ..."`): no WSL
+  ele falha com "dubious ownership" e com `chmod` em /mnt/c.
+- `npm run tauri dev` fica rodando e recompila sozinho a cada alteração em src-tauri. Antes de subir
+  outra instância, verifique se o usuário já tem uma (Vite na porta 1420, `lang-app.exe`); não
+  encerre a sessão dele sem avisar.
+- Testes que tocam o SO real (clipboard, keychain) são `#[ignore]`: `cargo test -- --ignored`.
 
 ## Convenções
 - Rust: sem unwrap()/expect() fora de testes; erros tipados (thiserror).

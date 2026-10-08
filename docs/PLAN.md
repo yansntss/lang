@@ -2,6 +2,19 @@
 
 Atualizado ao fim de cada fase. Marcar `[x]` ao concluir.
 
+## Estado atual (2026-10-07) — retomar daqui
+- Fases 0, 1 e 2 concluídas, revisadas, testadas manualmente pelo usuário e commitadas em `main`.
+- **Próximo: Fase 3 — Explicar com Claude.** Só funciona de verdade com uma chave da Anthropic
+  (o usuário tem apenas DeepL Free): construir e testar com mocks (`wiremock` + SSE) e deixar o
+  botão desabilitado, com dica, enquanto não houver chave. Planejar antes (`/ecc:plan fase 3`).
+- Decisões que o usuário ainda não tomou (detalhes nas notas da Fase 2):
+  1. Manter VS Code/Cursor/IDEs JetBrains bloqueados na captura de seleção, ou liberar.
+  2. Traduzir a seleção capturada automaticamente (como hoje) ou só após Enter.
+- Testes: 111 de Rust (+2 `#[ignore]` que usam o clipboard e o keychain reais:
+  `cargo test -- --ignored`) e 30 do front. `clippy -D warnings` e `fmt --check` limpos.
+- Armadilhas de ambiente (também em `CLAUDE.md`): `cargo` fora do PATH do `powershell.exe`,
+  git só funciona pelo Windows, e `tauri dev` recompila sozinho a cada alteração.
+
 ## Decisões de escopo
 - Plataforma alvo: **Windows**. Código mantido compilável em macOS/Linux, mas sem testes, sem CI e sem suporte oficial a eles.
 - Chaves: apenas **DeepL Free** (`:fx`, endpoint `api-free.deepl.com`). Chave da Anthropic é opcional: sem ela, "Explicar" fica desabilitado.
@@ -127,15 +140,16 @@ Pendências conhecidas (fora da Fase 1):
 - [x] `popup://reset` com `{ prefill }` e tradução automática pelo caminho da digitação
 - [x] Trava anti-captura-sobreposta com relógio de segurança de 5 s
 
-Verificação manual (pendente, não automatizável; `npm run tauri dev`):
-- [ ] Selecionar texto no Bloco de Notas, Chrome, Edge e Word: o popup abre com o texto e traduz
-- [ ] **Terminal:** com um comando rodando no Windows Terminal, o atalho NÃO interrompe o comando
-- [ ] Clipboard igual ao de antes (texto, imagem e conteúdo copiado de navegador/Word com formatação)
-- [ ] App como administrador: abre vazio, sem erro
-- [ ] Segurar o atalho por mais de 1 s: abre vazio, sem tecla presa nem "t" digitado no app
-- [ ] Apertar o atalho várias vezes seguidas não gera cópias sobrepostas
-- [ ] O popup mantém o foco depois de uma captura (o `set_focus` roda ~0,5 s após o atalho)
-- [ ] O log não contém trechos dos textos capturados
+Verificação manual (não automatizável; `npm run tauri dev`). Confirmada pelo usuário em
+2026-10-07 ("tudo ok nos teste manual"), em relato geral, sem itemizar:
+- [x] Selecionar texto no Bloco de Notas, Chrome, Edge e Word: o popup abre com o texto e traduz
+- [x] **Terminal:** com um comando rodando no Windows Terminal, o atalho NÃO interrompe o comando
+- [x] Clipboard igual ao de antes (texto, imagem e conteúdo copiado de navegador/Word com formatação)
+- [x] App como administrador: abre vazio, sem erro
+- [x] Segurar o atalho por mais de 1 s: abre vazio, sem tecla presa nem "t" digitado no app
+- [x] Apertar o atalho várias vezes seguidas não gera cópias sobrepostas
+- [x] O popup mantém o foco depois de uma captura (o `set_focus` roda ~0,5 s após o atalho)
+- [x] O log não contém trechos dos textos capturados
 
 Notas e decisões da Fase 2:
 - Em vez de `arboard` + `enigo`, usa o crate `windows` 0.62 (o mesmo que o Tauri já puxa):
