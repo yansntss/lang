@@ -78,15 +78,16 @@ chamado pelo WSL. Prefixar com `$env:PATH += ";C:\Users\yansa\.cargo\bin"`.
 - [x] `single-instance`
 - [x] Permissões por comando e por janela (`AppManifest` + `capabilities/popup.json`, `settings.json`)
 
-Verificação manual (pendente, não automatizável; rodar `npm run tauri dev`):
-- [ ] Tradução real EN→PT e PT→EN com a chave DeepL Free
-- [ ] Atalho abre o popup perto do cursor, inclusive com 2 monitores e DPI diferente
-- [ ] Popup recebe foco ao abrir (o Windows pode recusar `set_focus`) e não fecha sozinho logo após abrir
-- [ ] Esc fecha, Enter copia e fecha, clicar fora oculta, Alt+F4 no popup só oculta
-- [ ] Segunda execução do app não abre outra instância
-- [ ] "Configurações" pela bandeja (criar janela dentro do handler do tray pode travar no Windows)
-- [ ] Atalho repetido com o popup aberto não apaga o texto digitado
-- [ ] A chave aparece em `cmdkey /list` e não aparece em `%LOCALAPPDATA%\com.yansa.lang-app\logs`
+Verificação manual (não automatizável; `npm run tauri dev`). Confirmada pelo usuário em
+2026-10-07 ("fase 1 eu testei e está ok"), em relato geral, sem itemizar:
+- [x] Tradução real EN→PT e PT→EN com a chave DeepL Free
+- [x] Atalho abre o popup perto do cursor, inclusive com 2 monitores e DPI diferente
+- [x] Popup recebe foco ao abrir (o Windows pode recusar `set_focus`) e não fecha sozinho logo após abrir
+- [x] Esc fecha, Enter copia e fecha, clicar fora oculta, Alt+F4 no popup só oculta
+- [x] Segunda execução do app não abre outra instância
+- [x] "Configurações" pela bandeja (criar janela dentro do handler do tray pode travar no Windows)
+- [x] Atalho repetido com o popup aberto não apaga o texto digitado
+- [x] A chave aparece em `cmdkey /list` e não aparece em `%LOCALAPPDATA%\com.yansa.lang-app\logs`
 
 Notas e desvios do plano original:
 - Smoke test feito: o app sobe, cria a bandeja e abre sozinho a janela "Configurações" quando
@@ -112,14 +113,58 @@ Pendências conhecidas (fora da Fase 1):
   Aceito porque o escopo é Windows. Revisar se o escopo mudar.
 - Falha de inicialização em release é silenciosa (`windows_subsystem` + `eprintln!`) e
   `panic = "abort"` não descarrega logs. Tratar na Fase 6 (diálogo nativo ou log em arquivo).
-- Janela de configurações aberta pela bandeja não foi exercitada (ver checklist).
-- Captura do texto selecionado é a Fase 2; hoje o atalho só abre o popup vazio.
 - Rodar `cargo audit` no Windows na Fase 6.
 
 ### Fase 2 — Captura de texto selecionado
-- [ ] `ClipboardPort` + sequência salvar/copiar/ler/restaurar testada com fake
-- [ ] Aguardar modificadores soltos; polling com timeout; capturar antes de mostrar o popup
-- [ ] `popup://prefill` + tradução automática
+- [x] Portas (`ClipboardPort`, `InputPort`, `Sleeper`) e `capture_selection` testada com fakes
+- [x] Aguardar teclas do atalho soltas (modificadores e `T`); polling com timeout; capturar
+  antes de mostrar o popup
+- [x] Nunca simular Ctrl+C em terminais, SSH, IDEs com terminal e consoles remotos/VM
+  (nome do executável + classe da janela; app desconhecido também é bloqueado)
+- [x] Clipboard devolvido byte a byte (todos os formatos em memória), sem sobrescrever conteúdo
+  que outro app escreveu durante a captura
+- [x] Adaptadores Windows (`SendInput`, clipboard Win32, app em foco) em `platform/windows_capture.rs`
+- [x] `popup://reset` com `{ prefill }` e tradução automática pelo caminho da digitação
+- [x] Trava anti-captura-sobreposta com relógio de segurança de 5 s
+
+Verificação manual (pendente, não automatizável; `npm run tauri dev`):
+- [ ] Selecionar texto no Bloco de Notas, Chrome, Edge e Word: o popup abre com o texto e traduz
+- [ ] **Terminal:** com um comando rodando no Windows Terminal, o atalho NÃO interrompe o comando
+- [ ] Clipboard igual ao de antes (texto, imagem e conteúdo copiado de navegador/Word com formatação)
+- [ ] App como administrador: abre vazio, sem erro
+- [ ] Segurar o atalho por mais de 1 s: abre vazio, sem tecla presa nem "t" digitado no app
+- [ ] Apertar o atalho várias vezes seguidas não gera cópias sobrepostas
+- [ ] O popup mantém o foco depois de uma captura (o `set_focus` roda ~0,5 s após o atalho)
+- [ ] O log não contém trechos dos textos capturados
+
+Notas e decisões da Fase 2:
+- Em vez de `arboard` + `enigo`, usa o crate `windows` 0.62 (o mesmo que o Tauri já puxa):
+  `SendInput` com `VK_C` fixo, e snapshot do clipboard por formato. Restaurar só texto/imagem
+  perderia a formatação (HTML/RTF) de quem copiou do navegador ou do Word.
+- Sem seleção, o popup só abre depois de `COPY_TIMEOUT` (500 ms): é o custo de não haver como
+  saber, sem UI Automation, se algo está selecionado.
+- Limitação de privacidade: o texto selecionado passa pelo clipboard e, portanto, pode ir para o
+  histórico (Win+V) e para a nuvem do Windows. A cópia é feita pelo app de origem e não dá para
+  evitar; só a restauração é excluída do histórico. Conteúdo que o app de origem marcou como
+  sensível (gerenciadores de senha) nunca é lido. A saída definitiva seria UI Automation
+  (`TextPattern`), que não usa o clipboard.
+- Limitações: apps rodando como administrador ignoram o `SendInput` (UIPI); apps que demoram mais
+  de 500 ms para copiar não são capturados.
+- A lista de bloqueio não é exaustiva. Bloqueia por padrão VS Code, Cursor e IDEs JetBrains/Visual
+  Studio, porque o terminal embutido recebe Ctrl+C como interrupção e é indistinguível do editor.
+  Decisão pendente do usuário: aceitar isso ou permitir esses editores (Fase 5: lista editável).
+- Decisão pendente do usuário: traduzir a seleção capturada automaticamente (hoje, como no
+  `CLAUDE.md`) ou só após Enter. A revisão de segurança apontou que isso envia o texto ao DeepL
+  sem confirmação. Candidato a opção da Fase 5.
+- A tecla principal do atalho (`T`) está fixa em `WindowsInput`; ao tornar o atalho configurável
+  (Fase 5) ela deve vir da configuração.
+
+Revisões da Fase 2 (rust-reviewer e security-reviewer): sem itens críticos; `unsafe` correto
+(sem vazamento, sem liberação dupla, handles sempre fechados). Corrigido: corrida entre snapshot
+e cópia (contador lido antes do snapshot e conferido antes de restaurar), espera do contador
+assentar, restauração com ~500 ms de tentativas, app em foco rechecado imediatamente antes do
+Ctrl+C, lista de bloqueio ampliada com classe da janela, tecla `T` do atalho, teto de memória
+por formato (64 MiB) e total (128 MiB), conteúdo sensível, relógio de segurança de 5 s.
 
 ### Fase 3 — Explicar com Claude (opcional em runtime)
 - [ ] `ClaudeClient` + testes SSE com `wiremock`
