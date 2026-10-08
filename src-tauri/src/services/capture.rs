@@ -10,21 +10,20 @@ pub const POLL_INTERVAL: Duration = Duration::from_millis(10);
 /// Teto do texto levado ao popup, para uma seleção gigante não atravessar o IPC.
 pub const MAX_PREFILL_CHARS: usize = 20_000;
 
+/// Um formato do clipboard com seus bytes brutos (texto, HTML, RTF, imagem, lista de arquivos…).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ClipboardImage {
-    pub width: usize,
-    pub height: usize,
-    /// Pixels RGBA, 4 bytes por pixel.
-    pub bytes: Vec<u8>,
+pub struct ClipboardFormat {
+    pub id: u32,
+    pub data: Vec<u8>,
 }
 
-/// Conteúdo do clipboard antes da captura, para poder devolvê-lo depois.
+/// Conteúdo do clipboard antes da captura, para poder devolvê-lo depois sem perder formatação.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClipboardSnapshot {
     Empty,
-    Text(String),
-    Image(ClipboardImage),
-    /// Arquivos, HTML rico etc.: não dá para restaurar, então a captura é recusada.
+    Formats(Vec<ClipboardFormat>),
+    /// Algum formato não pode ser copiado (handle gráfico, por exemplo): restaurar perderia
+    /// dados, então a captura é recusada.
     Unsupported,
 }
 
@@ -234,8 +233,7 @@ mod tests {
                 if polls >= self.copy_latency_polls {
                     *pending = None;
                     if let Some(selection) = &self.selection {
-                        *self.clipboard.lock().unwrap() =
-                            ClipboardSnapshot::Text(selection.clone());
+                        *self.clipboard.lock().unwrap() = text(selection);
                         self.sequence.fetch_add(1, Ordering::SeqCst);
                     }
                 } else {
@@ -256,10 +254,13 @@ mod tests {
             if self.unsupported_after_copy {
                 return Ok(None);
             }
-            match self.current() {
-                ClipboardSnapshot::Text(text) => Ok(Some(text)),
-                _ => Ok(None),
-            }
+            let ClipboardSnapshot::Formats(formats) = self.current() else {
+                return Ok(None);
+            };
+            Ok(formats
+                .iter()
+                .find(|format| format.id == TEXT_FORMAT)
+                .map(|format| String::from_utf8_lossy(&format.data).into_owned()))
         }
 
         fn restore(&self, snapshot: &ClipboardSnapshot) -> Result<(), AppError> {
@@ -312,8 +313,20 @@ mod tests {
         capture_selection(desktop, desktop, &CountingSleeper::default())
     }
 
+    /// Identificador de formato de texto usado só pelo fake destes testes.
+    const TEXT_FORMAT: u32 = 13;
+    const HTML_FORMAT: u32 = 49_300;
+    const IMAGE_FORMAT: u32 = 8;
+
+    fn format(id: u32, data: &[u8]) -> ClipboardFormat {
+        ClipboardFormat {
+            id,
+            data: data.to_vec(),
+        }
+    }
+
     fn text(content: &str) -> ClipboardSnapshot {
-        ClipboardSnapshot::Text(content.to_owned())
+        ClipboardSnapshot::Formats(vec![format(TEXT_FORMAT, content.as_bytes())])
     }
 
     fn captured(content: &str) -> CaptureOutcome {
@@ -384,16 +397,25 @@ mod tests {
 
     #[test]
     fn restores_an_image_that_was_on_the_clipboard() {
-        let image = ClipboardSnapshot::Image(ClipboardImage {
-            width: 1,
-            height: 1,
-            bytes: vec![255, 0, 0, 255],
-        });
+        let image = ClipboardSnapshot::Formats(vec![format(IMAGE_FORMAT, &[255, 0, 0, 255])]);
         let desktop = FakeDesktop::with_clipboard(image.clone()).selecting("texto");
 
         run(&desktop).unwrap();
 
         assert_eq!(desktop.current(), image);
+    }
+
+    #[test]
+    fn restores_every_format_of_a_rich_clipboard_without_losing_formatting() {
+        let rich = ClipboardSnapshot::Formats(vec![
+            format(TEXT_FORMAT, b"antes"),
+            format(HTML_FORMAT, b"<b>antes</b>"),
+        ]);
+        let desktop = FakeDesktop::with_clipboard(rich.clone()).selecting("texto");
+
+        run(&desktop).unwrap();
+
+        assert_eq!(desktop.current(), rich);
     }
 
     #[test]
