@@ -7,12 +7,16 @@ Atualizado ao fim de cada fase. Marcar `[x]` ao concluir.
 - Fase 3 (Explicar com Claude) **implementada, revisada e testada com mocks**; falta só a
   verificação manual com uma chave real da Anthropic (o usuário tem apenas DeepL Free). Sem
   chave, o botão fica desabilitado, com dica.
-- **Próximo: Fase 4 — Histórico e aprendizado.** Planejar antes (`/ecc:plan fase 4`).
-- Decisões que o usuário ainda não tomou (detalhes nas notas da Fase 2):
+- Fase 4 (Histórico e aprendizado) **implementada, revisada e testada**; falta só a
+  verificação manual (checklist na seção da Fase 4).
+- **Próximo: Fase 5 — Configurações.** Planejar antes (`/ecc:plan fase 5`).
+- Decisões que o usuário ainda não tomou (detalhes nas notas das Fases 2 e 4):
   1. Manter VS Code/Cursor/IDEs JetBrains bloqueados na captura de seleção, ou liberar.
   2. Traduzir a seleção capturada automaticamente (como hoje) ou só após Enter.
-- Testes: 150 de Rust (+2 `#[ignore]` que usam o clipboard e o keychain reais:
-  `cargo test -- --ignored`) e 40 do front. `clippy -D warnings` e `fmt --check` limpos.
+  3. Histórico ligado por padrão grava texto selecionado em claro desde o primeiro Enter: manter
+     assim, ou mostrar um aviso na primeira gravação / começar desligado.
+- Testes: 185 de Rust (+2 `#[ignore]` que usam o clipboard e o keychain reais:
+  `cargo test -- --ignored`) e 75 do front. `clippy -D warnings` e `fmt --check` limpos.
 - Armadilhas de ambiente (também em `CLAUDE.md`): `cargo` fora do PATH do `powershell.exe`,
   git só funciona pelo Windows, e `tauri dev` recompila sozinho a cada alteração.
 
@@ -223,10 +227,63 @@ residual de `ActiveExplain` se a tarefa termina antes do `register` (inofensiva)
 `String` comum, sem `zeroize`.
 
 ### Fase 4 — Histórico e aprendizado
-- [ ] Schema + migrations (`user_version`), testes com `tempfile`
-- [ ] Gravação automática (ligada por padrão), dedup, opção de desligar
-- [ ] Janela de histórico: busca, favoritos, apagar
-- [ ] Revisão de favoritos, exportar CSV
+- [x] Schema + migrations (`user_version`), testes com `tempfile`
+- [x] Gravação (ligada por padrão), dedup, opção de desligar
+- [x] Janela de histórico: busca, favoritos, apagar
+- [x] Revisão de favoritos, exportar CSV
+
+Verificação manual (pendente; `npm run tauri dev`):
+- [ ] Traduzir um texto e apertar Enter: ele aparece em "Histórico" (bandeja → Histórico);
+  digitar sem confirmar não grava
+- [ ] Favoritar, buscar (inclusive sem acento: "ola" acha "Olá"), copiar, apagar um item
+- [ ] Aba "Revisão": mostrar tradução, Próximo, voltar ao cartão menos revisado
+- [ ] Desligar "Gravar histórico": Enter deixa de gravar; os itens antigos continuam
+- [ ] "Exportar CSV": o arquivo aparece em Downloads, abre no Excel com acentos corretos, e uma
+  segunda exportação no mesmo segundo não sobrescreve a primeira
+- [ ] "Limpar tudo" pede confirmação e apaga também os favoritos
+- [ ] Com o app em uso, a janela de histórico aberta não atualiza sozinha (ver pendências)
+
+Notas e decisões da Fase 4:
+- Banco `history.db` (SQLite via `rusqlite` bundled) na pasta de dados do app, acessado só pelo
+  Rust; comandos `async` com `spawn_blocking`. Se o banco não abrir, o app sobe e traduz
+  normalmente, e os comandos de histórico devolvem "Não foi possível acessar o histórico".
+- Grava só quando o usuário **confirma** (Enter ou Explicar), uma vez por tradução, e não a cada
+  rascunho que o popup traduz enquanto se digita. Repetir o mesmo texto e idioma de destino
+  atualiza a tradução, a data e o contador (`UNIQUE(source_text, target_lang)`).
+- Teto de 5000 itens **não favoritos** (os mais antigos saem); favoritos nunca saem sozinhos.
+- Datas em milissegundos unix; o CSV usa ISO 8601 UTC. Sem `chrono`.
+- A chave "Gravar histórico" fica na tabela `preferences` do próprio banco. A Fase 5 pode
+  migrá-la para o `tauri-plugin-store`.
+- Busca sem diferenciar maiúsculas nem acentos do português (função `fold` registrada no SQLite);
+  limitada a 200 caracteres. Páginas de 50 itens por `OFFSET`.
+- "Limpar tudo" usa `secure_delete` + `VACUUM`: o texto não sobra no arquivo (há teste lendo os
+  bytes do `history.db`).
+- CSV: UTF-8 com BOM, CRLF, todos os campos entre aspas, células começando com `= + - @` ou
+  tab/CR/LF levam um apóstrofo (proteção contra fórmula; textos legítimos como "-5 degrees"
+  saem com o apóstrofo visível). Gravado em `Downloads` com `create_new` (nunca sobrescreve;
+  sufixo `-2`, `-3`… se o nome existir). Sem plugin de diálogo.
+- A revisão oferece o favorito há mais tempo sem revisão (os nunca revisados primeiro).
+
+Revisões da Fase 4 (rust-reviewer, security-reviewer, react-reviewer): sem itens críticos.
+Corrigido: `secure_delete`/`VACUUM`, exportação que sobrescrevia, gravação e poda numa transação,
+busca sem acento, `busy_timeout`, limite da busca, validação do idioma de origem, `\n` na proteção
+de fórmula, log de falhas dos comandos, corrida de `loadMore`/`clear`/`toggle` no front, lista
+velha após erro de recarga, erros presos, aviso de sucesso antes da resposta, cartão de revisão
+(duplo clique, tentar de novo, recarga após limpar), rótulos de acessibilidade, estado "gravação
+desconhecida", gravação duplicada (Explicar + Enter) e o foco que se perdia após Explicar (agora
+o Enter continua copiando).
+Pendências conhecidas (baixo risco, adiadas):
+- Privacidade (decisão 3 acima): sem aviso na primeira gravação; banco em texto claro (sem
+  SQLCipher).
+- Sem teto de bytes nem de favoritos: o pior caso teórico passa de centenas de MB, e `export`
+  carrega tudo em memória.
+- Banco corrompido ou de versão futura deixa o histórico indisponível sem mensagem específica
+  nem recuperação (renomear para `.bak`).
+- A janela de histórico não recarrega sozinha quando o popup grava um item (reabra ou busque).
+- Tablist sem navegação por setas (usa botões com `aria-pressed`); foco não é movido ao revelar
+  a tradução ou apagar um item; `OFFSET` pode repetir/pular um item se algo for gravado entre
+  cliques em "Carregar mais"; `delete` de id inexistente é silencioso, `toggle`/`mark_reviewed`
+  dão erro; a busca de um item só acha o que o `fold` cobre (letras latinas comuns).
 
 ### Fase 5 — Configurações
 - [ ] `Settings` persistido (atalho, idiomas, autostart, histórico, modelo, tema)
