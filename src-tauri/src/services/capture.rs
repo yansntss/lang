@@ -190,7 +190,14 @@ fn normalize(text: &str) -> String {
 ///
 /// É uma lista de bloqueio, então nunca será exaustiva; por isso um app desconhecido
 /// (`process_path` ausente) também é bloqueado.
-pub fn is_capture_blocked(process_path: Option<&str>, window_class: Option<&str>) -> bool {
+///
+/// Os editores (`EDITOR_PROCESSES`) só deixam de ser bloqueados se o usuário os liberou
+/// (`allow_editors`); terminais e consoles remotos são bloqueados sempre.
+pub fn is_capture_blocked(
+    process_path: Option<&str>,
+    window_class: Option<&str>,
+    allow_editors: bool,
+) -> bool {
     let Some(path) = process_path else {
         return true;
     };
@@ -202,6 +209,9 @@ pub fn is_capture_blocked(process_path: Option<&str>, window_class: Option<&str>
         .trim()
         .to_ascii_lowercase();
     if file_name.is_empty() || BLOCKED_PROCESSES.contains(&file_name.as_str()) {
+        return true;
+    }
+    if !allow_editors && EDITOR_PROCESSES.contains(&file_name.as_str()) {
         return true;
     }
 
@@ -248,7 +258,24 @@ const BLOCKED_PROCESSES: &[&str] = &[
     "securecrt.exe",
     "xshell.exe",
     "ttermpro.exe",
-    // Editores e IDEs com terminal embutido.
+    // Área de trabalho remota e máquinas virtuais.
+    "mstsc.exe",
+    "msrdc.exe",
+    "vmconnect.exe",
+    "vmware.exe",
+    "vmplayer.exe",
+    "virtualboxvm.exe",
+    "vboxsdl.exe",
+    "anydesk.exe",
+    "teamviewer.exe",
+    "parsecd.exe",
+    "wfica32.exe",
+];
+
+/// Editores e IDEs com terminal embutido: o terminal é indistinguível do editor pela janela, e
+/// ali o Ctrl+C simulado interrompe o processo em execução. Bloqueados por padrão; o usuário
+/// pode liberá-los nas configurações. Nomes de arquivo em minúsculas.
+const EDITOR_PROCESSES: &[&str] = &[
     "code.exe",
     "code - insiders.exe",
     "cursor.exe",
@@ -264,18 +291,6 @@ const BLOCKED_PROCESSES: &[&str] = &[
     "rubymine64.exe",
     "datagrip64.exe",
     "studio64.exe",
-    // Área de trabalho remota e máquinas virtuais.
-    "mstsc.exe",
-    "msrdc.exe",
-    "vmconnect.exe",
-    "vmware.exe",
-    "vmplayer.exe",
-    "virtualboxvm.exe",
-    "vboxsdl.exe",
-    "anydesk.exe",
-    "teamviewer.exe",
-    "parsecd.exe",
-    "wfica32.exe",
 ];
 
 /// Classes de janela de consoles e terminais, para pegar hospedeiros que o nome do arquivo
@@ -486,6 +501,11 @@ mod tests {
         }
     }
 
+    /// Com a configuração de fábrica: editores bloqueados.
+    fn blocked(process_path: Option<&str>, window_class: Option<&str>) -> bool {
+        is_capture_blocked(process_path, window_class, false)
+    }
+
     fn text(content: &str) -> ClipboardSnapshot {
         ClipboardSnapshot::Formats(vec![format(TEXT_FORMAT, content.as_bytes())])
     }
@@ -519,7 +539,7 @@ mod tests {
             "MobaXterm.exe",
             "Termius.exe",
         ] {
-            assert!(is_capture_blocked(Some(terminal), None), "{terminal}");
+            assert!(blocked(Some(terminal), None), "{terminal}");
         }
     }
 
@@ -533,8 +553,44 @@ mod tests {
             "idea64.exe",
             "pycharm64.exe",
         ] {
-            assert!(is_capture_blocked(Some(editor), None), "{editor}");
+            assert!(blocked(Some(editor), None), "{editor}");
         }
+    }
+
+    #[test]
+    fn allows_editors_only_when_the_user_released_them() {
+        for editor in ["Code.exe", "Cursor.exe", "idea64.exe", r"C:\VS\devenv.exe"] {
+            assert!(is_capture_blocked(Some(editor), None, false), "{editor}");
+            assert!(!is_capture_blocked(Some(editor), None, true), "{editor}");
+        }
+    }
+
+    #[test]
+    fn releasing_editors_never_releases_terminals_or_remote_consoles() {
+        for process in [
+            "WindowsTerminal.exe",
+            "cmd.exe",
+            "pwsh.exe",
+            "putty.exe",
+            "mstsc.exe",
+            "VirtualBoxVM.exe",
+        ] {
+            assert!(is_capture_blocked(Some(process), None, true), "{process}");
+        }
+    }
+
+    #[test]
+    fn releasing_editors_does_not_release_console_window_classes() {
+        assert!(is_capture_blocked(
+            Some("code.exe"),
+            Some("ConsoleWindowClass"),
+            true
+        ));
+    }
+
+    #[test]
+    fn an_unknown_foreground_process_stays_blocked_even_with_editors_released() {
+        assert!(is_capture_blocked(None, None, true));
     }
 
     #[test]
@@ -545,7 +601,7 @@ mod tests {
             "VirtualBoxVM.exe",
             "AnyDesk.exe",
         ] {
-            assert!(is_capture_blocked(Some(console), None), "{console}");
+            assert!(blocked(Some(console), None), "{console}");
         }
     }
 
@@ -560,7 +616,7 @@ mod tests {
             "consolewindowclass",
         ] {
             assert!(
-                is_capture_blocked(Some(r"C:\Tools\algum-host.exe"), Some(class)),
+                blocked(Some(r"C:\Tools\algum-host.exe"), Some(class)),
                 "{class}"
             );
         }
@@ -568,11 +624,8 @@ mod tests {
 
     #[test]
     fn blocks_regardless_of_case_and_full_path() {
-        assert!(is_capture_blocked(
-            Some(r"C:\Windows\System32\CMD.EXE"),
-            None
-        ));
-        assert!(is_capture_blocked(
+        assert!(blocked(Some(r"C:\Windows\System32\CMD.EXE"), None));
+        assert!(blocked(
             Some("C:/Program Files/PowerShell/7/pwsh.exe"),
             None
         ));
@@ -587,24 +640,21 @@ mod tests {
             "WINWORD.EXE",
             "firefox.exe",
         ] {
-            assert!(
-                !is_capture_blocked(Some(app), Some("Chrome_WidgetWin_1")),
-                "{app}"
-            );
+            assert!(!blocked(Some(app), Some("Chrome_WidgetWin_1")), "{app}");
         }
     }
 
     #[test]
     fn matches_the_whole_file_name_not_a_fragment() {
-        assert!(!is_capture_blocked(Some(r"C:\Tools\mycmd.exe"), None));
-        assert!(!is_capture_blocked(Some(r"C:\Tools\cmder-notes.exe"), None));
+        assert!(!blocked(Some(r"C:\Tools\mycmd.exe"), None));
+        assert!(!blocked(Some(r"C:\Tools\cmder-notes.exe"), None));
     }
 
     #[test]
     fn blocks_when_the_foreground_process_is_unknown() {
-        assert!(is_capture_blocked(None, None));
-        assert!(is_capture_blocked(Some(""), None));
-        assert!(is_capture_blocked(Some("   "), None));
+        assert!(blocked(None, None));
+        assert!(blocked(Some(""), None));
+        assert!(blocked(Some("   "), None));
     }
 
     #[test]

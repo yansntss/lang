@@ -24,13 +24,14 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
-    KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT, VK_T,
+    KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DestroyWindow, GetClassNameW, GetForegroundWindow, GetWindowThreadProcessId,
     HWND_MESSAGE, WINDOW_EX_STYLE, WINDOW_STYLE,
 };
 
+use super::capture_config;
 use crate::error::AppError;
 use crate::services::capture::{
     capture_selection, is_capture_blocked, CaptureOutcome, ClipboardFormat, ClipboardPort,
@@ -348,19 +349,29 @@ fn decode_utf16_text(bytes: &[u8]) -> String {
 pub struct WindowsInput;
 
 impl InputPort for WindowsInput {
-    /// Modificadores e a tecla principal do atalho (`T`): segurar o `T` depois de soltar
-    /// Ctrl/Alt faria o auto-repeat digitar "t" no app de origem. Quando o atalho passar a ser
-    /// configurável (Fase 5), a tecla principal deve vir da configuração.
+    /// Modificadores e a tecla principal do atalho configurado: segurar a tecla depois de soltar
+    /// Ctrl/Alt faria o auto-repeat digitá-la no app de origem.
     fn shortcut_keys_pressed(&self) -> bool {
-        [VK_CONTROL, VK_MENU, VK_SHIFT, VK_LWIN, VK_RWIN, VK_T]
-            .into_iter()
-            .any(is_key_down)
+        [
+            VK_CONTROL,
+            VK_MENU,
+            VK_SHIFT,
+            VK_LWIN,
+            VK_RWIN,
+            VIRTUAL_KEY(capture_config::main_key()),
+        ]
+        .into_iter()
+        .any(is_key_down)
     }
 
     fn is_target_allowed(&self) -> bool {
         let process_path = foreground_process_path();
         let window_class = foreground_window_class();
-        !is_capture_blocked(process_path.as_deref(), window_class.as_deref())
+        !is_capture_blocked(
+            process_path.as_deref(),
+            window_class.as_deref(),
+            capture_config::allow_editors(),
+        )
     }
 
     fn send_copy(&self) -> Result<(), AppError> {

@@ -6,6 +6,11 @@
   "permissions": [
     "allow-set-secret",
     "allow-has-secret",
-    "allow-delete-secret"
+    "allow-delete-secret",
+    "allow-test-secret",
+    "allow-get-settings",
+    "allow-update-settings",
+    "allow-set-shortcut",
+    "allow-set-autostart"
   ]
 }

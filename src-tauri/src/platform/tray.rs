@@ -15,6 +15,25 @@ const MENU_QUIT: &str = "quit";
 
 pub const TOOLTIP: &str = "Tradutor";
 
+/// Texto da dica da bandeja: avisa quando o atalho não pôde ser registrado.
+pub fn tooltip_for(shortcut_label: &str, shortcut_available: bool) -> String {
+    if shortcut_available {
+        TOOLTIP.to_owned()
+    } else {
+        format!("{TOOLTIP} — atalho {shortcut_label} indisponível")
+    }
+}
+
+/// Atualiza a dica da bandeja depois de trocar o atalho.
+pub fn update_tooltip(app: &AppHandle, shortcut_label: &str, shortcut_available: bool) {
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        return;
+    };
+    if let Err(error) = tray.set_tooltip(Some(tooltip_for(shortcut_label, shortcut_available))) {
+        log::warn!("não foi possível atualizar a dica da bandeja: {error}");
+    }
+}
+
 pub fn create(app: &AppHandle) -> tauri::Result<TrayIcon> {
     let open = MenuItem::with_id(app, MENU_OPEN, "Abrir tradutor", true, None::<&str>)?;
     let history = MenuItem::with_id(app, MENU_HISTORY, "Histórico", true, None::<&str>)?;
@@ -52,4 +71,18 @@ pub fn create(app: &AppHandle) -> tauri::Result<TrayIcon> {
     }
 
     builder.build(app)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_tooltip_only_warns_when_the_shortcut_is_unavailable() {
+        assert_eq!(tooltip_for("Ctrl+Alt+T", true), "Tradutor");
+        assert_eq!(
+            tooltip_for("Ctrl+Alt+T", false),
+            "Tradutor — atalho Ctrl+Alt+T indisponível"
+        );
+    }
 }

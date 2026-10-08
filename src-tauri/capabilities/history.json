@@ -13,6 +13,7 @@
     "allow-set-history-enabled",
     "allow-next-review",
     "allow-mark-reviewed",
+    "allow-get-settings",
     "allow-copy-to-clipboard"
   ]
 }

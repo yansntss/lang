@@ -46,6 +46,9 @@ pub enum AppError {
 
     #[error("Não foi possível acessar o histórico.")]
     History(String),
+
+    #[error("Não foi possível salvar as configurações.")]
+    Settings(String),
 }
 
 impl AppError {
@@ -63,6 +66,7 @@ impl AppError {
             Self::Window(_) => "window",
             Self::Capture(_) => "capture",
             Self::History(_) => "history",
+            Self::Settings(_) => "settings",
         }
     }
 }
@@ -170,6 +174,11 @@ mod tests {
                 "history",
                 "Não foi possível acessar o histórico.",
             ),
+            (
+                AppError::Settings("Permission denied (os error 5)".into()),
+                "settings",
+                "Não foi possível salvar as configurações.",
+            ),
         ];
 
         for (error, code, message) in cases {
@@ -177,7 +186,12 @@ mod tests {
 
             assert!(json.contains(&format!(r#""code":"{code}""#)));
             assert!(json.contains(message));
-            assert!(!json.contains("0x5") && !json.contains("HWND") && !json.contains("table"));
+            assert!(
+                !json.contains("0x5")
+                    && !json.contains("HWND")
+                    && !json.contains("table")
+                    && !json.contains("Permission denied")
+            );
         }
     }
 

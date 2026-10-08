@@ -15,7 +15,8 @@ pub fn explain(
     translation: String,
     on_event: Channel<ExplainEvent>,
 ) -> Result<u64, AppError> {
-    let prompt = build_prompt(&text, &translation)?;
+    let mut prompt = build_prompt(&text, &translation)?;
+    prompt.model = state.settings.get().preferences.explain_model;
     let service = state.explanations.clone();
     let tasks = state.active_explain.clone();
     let id = tasks.next_id();

@@ -1,7 +1,7 @@
 use tauri::Manager;
 
 use platform::popup_window::{handle_window_event, show_near_cursor, PopupState};
-use platform::{log_failure, settings_window, shortcut, tray};
+use platform::{capture_config, log_failure, settings_window, shortcut, tray};
 use secrets::SecretKind;
 use state::AppState;
 
@@ -10,6 +10,7 @@ pub mod error;
 pub mod platform;
 pub mod secrets;
 pub mod services;
+pub mod settings;
 pub mod state;
 
 pub use error::AppError;
@@ -26,6 +27,10 @@ pub fn run() -> tauri::Result<()> {
                 .build(),
         )
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(shortcut::plugin())
         .manage(PopupState::default())
         .setup(setup)
@@ -49,6 +54,11 @@ pub fn run() -> tauri::Result<()> {
             commands::secrets::set_secret,
             commands::secrets::has_secret,
             commands::secrets::delete_secret,
+            commands::settings::get_settings,
+            commands::settings::update_settings,
+            commands::settings::set_shortcut,
+            commands::settings::set_autostart,
+            commands::settings::test_secret,
         ])
         .run(tauri::generate_context!())
 }
@@ -57,13 +67,14 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let data_dir = app.path().app_data_dir()?;
     app.manage(AppState::new(&data_dir)?);
 
+    let settings = app.state::<AppState>().settings.get();
+    capture_config::set_allow_editors(settings.preferences.capture_in_editors);
+    let accelerator = shortcut::startup_accelerator(&settings.shortcut)?;
+    capture_config::set_main_key(accelerator.virtual_key);
+
     let tray = tray::create(app.handle())?;
-    if !shortcut::register_default(app.handle()) {
-        tray.set_tooltip(Some(format!(
-            "{} — atalho {} indisponível",
-            tray::TOOLTIP,
-            shortcut::DEFAULT_LABEL
-        )))?;
+    if !shortcut::register_initial(app.handle(), &accelerator) {
+        tray.set_tooltip(Some(tray::tooltip_for(&accelerator.label, false)))?;
     }
 
     open_settings_on_first_run(app.handle());

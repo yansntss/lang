@@ -7,7 +7,8 @@ use crate::state::AppState;
 
 #[tauri::command]
 pub async fn translate(state: State<'_, AppState>, text: String) -> Result<Translation, AppError> {
-    state.translations.translate(&text).await
+    let langs = state.settings.get().preferences.target_langs();
+    state.translations.translate_with(&text, langs).await
 }
 
 /// A escrita no clipboard acontece no Rust, então o front não precisa de permissão de clipboard.

@@ -9,15 +9,19 @@ use super::placement::{
 };
 use super::window_error;
 use crate::error::AppError;
+use crate::state::AppState;
 
 pub const POPUP_LABEL: &str = "popup";
 /// Enviado ao front a cada exibição: limpar o texto, focar o campo e, se houver, preencher.
 pub const EVENT_RESET: &str = "popup://reset";
 
-/// Corpo do evento `popup://reset`. `prefill` é o texto capturado da seleção do usuário.
+/// Corpo do evento `popup://reset`. `prefill` é o texto capturado da seleção do usuário e
+/// `auto_translate` diz se ele deve ser traduzido sozinho ou só depois do Enter.
 #[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ResetPayload<'a> {
     prefill: Option<&'a str>,
+    auto_translate: bool,
 }
 const CURSOR_OFFSET_LOGICAL: f64 = 12.0;
 
@@ -96,8 +100,19 @@ pub fn show_near_cursor(app: &AppHandle, prefill: Option<&str>) -> Result<(), Ap
     }
 
     app.state::<PopupState>().mark_shown();
-    app.emit_to(POPUP_LABEL, EVENT_RESET, ResetPayload { prefill })
-        .map_err(window_error)?;
+    // Sem o estado ainda (uma segunda instância muito cedo), mantém o comportamento de fábrica.
+    let auto_translate = app
+        .try_state::<AppState>()
+        .is_none_or(|state| state.settings.get().preferences.auto_translate_selection);
+    app.emit_to(
+        POPUP_LABEL,
+        EVENT_RESET,
+        ResetPayload {
+            prefill,
+            auto_translate,
+        },
+    )
+    .map_err(window_error)?;
     window.show().map_err(window_error)?;
     let focus_result = window.set_focus().map_err(window_error);
     hide_if_still_unfocused(window);
@@ -163,16 +178,21 @@ mod tests {
     fn reset_payload_carries_the_captured_text() {
         let json = serde_json::to_string(&ResetPayload {
             prefill: Some("olá mundo"),
+            auto_translate: true,
         })
         .unwrap();
 
-        assert_eq!(json, r#"{"prefill":"olá mundo"}"#);
+        assert_eq!(json, r#"{"prefill":"olá mundo","autoTranslate":true}"#);
     }
 
     #[test]
     fn reset_payload_without_capture_serializes_prefill_as_null() {
-        let json = serde_json::to_string(&ResetPayload { prefill: None }).unwrap();
+        let json = serde_json::to_string(&ResetPayload {
+            prefill: None,
+            auto_translate: false,
+        })
+        .unwrap();
 
-        assert_eq!(json, r#"{"prefill":null}"#);
+        assert_eq!(json, r#"{"prefill":null,"autoTranslate":false}"#);
     }
 }

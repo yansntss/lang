@@ -16,8 +16,7 @@ const MESSAGES_PATH: &str = "/v1/messages";
 const API_VERSION: &str = "2023-06-01";
 const API_KEY_HEADER: &str = "x-api-key";
 const VERSION_HEADER: &str = "anthropic-version";
-/// Modelo leve e barato: a explicação é curta e vale mais a latência que a profundidade.
-pub const MODEL: &str = "claude-haiku-5-5";
+const MODELS_PATH: &str = "/v1/models";
 /// Teto da resposta. A explicação pedida cabe folgadamente; o limite protege a cota.
 pub const MAX_OUTPUT_TOKENS: u32 = 800;
 /// Tempo máximo sem receber nenhum byte (o limite vale para cada leitura, não para o total).
@@ -125,6 +124,31 @@ impl ClaudeClient {
     }
 }
 
+impl ClaudeClient {
+    /// Confere a chave listando os modelos: não gasta tokens.
+    pub async fn check_key(&self) -> Result<(), AppError> {
+        let key = self.secrets.require(SecretKind::Anthropic)?;
+        let key_header = api_key_header(&key)?;
+        let base_url = self.base_url_override.as_deref().unwrap_or(BASE_URL);
+
+        let response = self
+            .http
+            .get(format!("{base_url}{MODELS_PATH}"))
+            .header(API_KEY_HEADER, key_header)
+            .header(VERSION_HEADER, API_VERSION)
+            .send()
+            .await
+            .map_err(network_error)?;
+
+        let status = response.status();
+        if status.is_success() {
+            Ok(())
+        } else {
+            Err(error_for_status(status))
+        }
+    }
+}
+
 impl Explainer for ClaudeClient {
     async fn explain<F>(&self, prompt: &Prompt, mut on_delta: F) -> Result<(), AppError>
     where
@@ -140,7 +164,7 @@ impl Explainer for ClaudeClient {
             .header(API_KEY_HEADER, key_header)
             .header(VERSION_HEADER, API_VERSION)
             .json(&MessagesRequest {
-                model: MODEL,
+                model: prompt.model.id(),
                 max_tokens: MAX_OUTPUT_TOKENS,
                 stream: true,
                 system: prompt.system,
@@ -238,6 +262,7 @@ mod tests {
     use super::*;
     use crate::secrets::InMemoryStore;
     use crate::services::explain::build_prompt;
+    use crate::settings::ExplainModel;
 
     const KEY: &str = "sk-ant-chave-de-teste";
 
@@ -347,7 +372,7 @@ mod tests {
         let requests = server.received_requests().await.unwrap();
         let body: Value = requests[0].body_json().unwrap();
         let prompt = prompt();
-        assert_eq!(body["model"], MODEL);
+        assert_eq!(body["model"], ExplainModel::default().id());
         assert_eq!(body["max_tokens"], MAX_OUTPUT_TOKENS);
         assert_eq!(body["stream"], true);
         assert_eq!(body["system"], prompt.system);
@@ -376,6 +401,91 @@ mod tests {
 
         result.unwrap();
         assert_eq!(deltas, vec!["ok"]);
+    }
+
+    #[tokio::test]
+    async fn sends_the_model_chosen_in_the_prompt() {
+        let server = server_replying(stream_response(stop())).await;
+        let prompt = Prompt {
+            model: ExplainModel::Sonnet,
+            ..prompt()
+        };
+
+        client(&server, Some(KEY))
+            .explain(&prompt, |_| {})
+            .await
+            .unwrap();
+
+        let requests = server.received_requests().await.unwrap();
+        let body: Value = requests[0].body_json().unwrap();
+        assert_eq!(body["model"], "claude-sonnet-5-5");
+    }
+
+    async fn models_server(response: ResponseTemplate) -> MockServer {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/models"))
+            .and(header("x-api-key", KEY))
+            .and(header("anthropic-version", "2023-06-01"))
+            .respond_with(response)
+            .mount(&server)
+            .await;
+        server
+    }
+
+    #[tokio::test]
+    async fn check_key_accepts_a_valid_key_without_sending_a_prompt() {
+        let server =
+            models_server(ResponseTemplate::new(200).set_body_json(json!({"data": []}))).await;
+
+        client(&server, Some(KEY)).check_key().await.unwrap();
+
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0].body.is_empty());
+    }
+
+    #[tokio::test]
+    async fn check_key_maps_failures_to_typed_errors() {
+        let cases = [
+            (401, "invalid_api_key"),
+            (403, "invalid_api_key"),
+            (429, "rate_limited"),
+            (500, "upstream"),
+        ];
+
+        for (status, expected_code) in cases {
+            let server = models_server(ResponseTemplate::new(status)).await;
+
+            let error = client(&server, Some(KEY)).check_key().await.unwrap_err();
+
+            assert_eq!(error.code(), expected_code, "status {status}");
+        }
+    }
+
+    #[tokio::test]
+    async fn check_key_without_a_key_makes_no_request() {
+        let server = models_server(ResponseTemplate::new(200)).await;
+
+        let error = client(&server, None).check_key().await.unwrap_err();
+
+        assert_eq!(error.code(), "missing_secret");
+        assert_eq!(request_count(&server).await, 0);
+    }
+
+    #[tokio::test]
+    async fn check_key_does_not_leak_the_key_on_network_failure() {
+        let client = ClaudeClient::build(
+            store_with(Some(KEY)),
+            Some("http://127.0.0.1:1".into()),
+            Duration::from_secs(2),
+        )
+        .unwrap();
+
+        let error = client.check_key().await.unwrap_err();
+
+        assert_eq!(error.code(), "network");
+        assert!(!format!("{error:?}").contains(KEY));
     }
 
     #[tokio::test]

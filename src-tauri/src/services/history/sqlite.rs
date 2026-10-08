@@ -19,7 +19,7 @@ const MAX_QUERY_CHARS: usize = 200;
 /// Quanto esperar se outro processo (backup, sincronização) estiver com o arquivo aberto.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 /// Idiomas de destino que o app produz (ver `TargetLang`).
-const TARGET_LANGS: [&str; 2] = ["PT-BR", "EN-US"];
+const TARGET_LANGS: [&str; 4] = ["PT-BR", "PT-PT", "EN-US", "EN-GB"];
 
 const COLUMNS: &str = "id, source_text, translated_text, source_lang, target_lang, favorite, \
                        created_at, last_used_at, use_count, last_reviewed_at";

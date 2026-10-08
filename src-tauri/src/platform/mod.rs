@@ -2,6 +2,8 @@ use crate::error::AppError;
 #[cfg(not(windows))]
 use crate::services::capture::CaptureOutcome;
 
+pub mod accelerator;
+pub mod capture_config;
 pub mod history_window;
 pub mod placement;
 pub mod popup_window;

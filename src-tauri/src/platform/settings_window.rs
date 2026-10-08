@@ -14,8 +14,8 @@ pub fn open(app: &AppHandle) -> Result<(), AppError> {
 
     WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("settings.html".into()))
         .title("Configurações")
-        .inner_size(480.0, 300.0)
-        .resizable(false)
+        .inner_size(540.0, 760.0)
+        .min_inner_size(440.0, 420.0)
         .center()
         .build()
         .map_err(window_error)?;

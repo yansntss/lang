@@ -13,6 +13,7 @@ const FREE_BASE_URL: &str = "https://api-free.deepl.com";
 const PRO_BASE_URL: &str = "https://api.deepl.com";
 const FREE_KEY_SUFFIX: &str = ":fx";
 const TRANSLATE_PATH: &str = "/v2/translate";
+const USAGE_PATH: &str = "/v2/usage";
 /// Status HTTP próprio do DeepL para cota esgotada.
 const STATUS_QUOTA_EXCEEDED: u16 = 456;
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -73,6 +74,56 @@ impl DeepLClient {
             http,
             secrets,
             base_url_override,
+        })
+    }
+}
+
+/// Consumo do mês, em caracteres.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Usage {
+    pub used: u64,
+    pub limit: u64,
+}
+
+#[derive(Deserialize)]
+struct UsageResponse {
+    character_count: u64,
+    #[serde(default)]
+    character_limit: Option<u64>,
+}
+
+impl DeepLClient {
+    /// Confere a chave pedindo o consumo do mês: não gasta caracteres da cota.
+    pub async fn check_key(&self) -> Result<Usage, AppError> {
+        let key = self.secrets.require(SecretKind::Deepl)?;
+        let authorization = authorization_header(&key)?;
+        let base_url = self
+            .base_url_override
+            .as_deref()
+            .unwrap_or_else(|| base_url_for_key(&key));
+
+        let response = self
+            .http
+            .get(format!("{base_url}{USAGE_PATH}"))
+            .header(AUTHORIZATION, authorization)
+            .send()
+            .await
+            .map_err(network_error)?;
+
+        let status = response.status();
+        if !status.is_success() {
+            return Err(error_for_status(status));
+        }
+        let body: UsageResponse = response.json().await.map_err(|error| {
+            if error.is_decode() {
+                AppError::Upstream(status.as_u16())
+            } else {
+                network_error(error)
+            }
+        })?;
+        Ok(Usage {
+            used: body.character_count,
+            limit: body.character_limit.unwrap_or(0),
         })
     }
 }
@@ -391,6 +442,94 @@ mod tests {
 
         assert_eq!(error.code(), "invalid_api_key");
         assert_eq!(request_count(&server).await, 0);
+    }
+
+    async fn usage_server(response: ResponseTemplate) -> MockServer {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v2/usage"))
+            .and(header(
+                "authorization",
+                format!("DeepL-Auth-Key {FREE_KEY}").as_str(),
+            ))
+            .respond_with(response)
+            .mount(&server)
+            .await;
+        server
+    }
+
+    #[tokio::test]
+    async fn check_key_reads_the_monthly_usage() {
+        let server = usage_server(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({ "character_count": 1234, "character_limit": 500000 })),
+        )
+        .await;
+
+        let usage = client(&server, Some(FREE_KEY)).check_key().await.unwrap();
+
+        assert_eq!(
+            usage,
+            Usage {
+                used: 1234,
+                limit: 500_000
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn check_key_tolerates_an_account_without_a_limit() {
+        let server =
+            usage_server(ResponseTemplate::new(200).set_body_json(json!({ "character_count": 7 })))
+                .await;
+
+        let usage = client(&server, Some(FREE_KEY)).check_key().await.unwrap();
+
+        assert_eq!(usage, Usage { used: 7, limit: 0 });
+    }
+
+    #[tokio::test]
+    async fn check_key_maps_failures_to_typed_errors() {
+        let cases = [
+            (401, "invalid_api_key"),
+            (403, "invalid_api_key"),
+            (456, "quota_exceeded"),
+            (429, "rate_limited"),
+            (500, "upstream"),
+        ];
+
+        for (status, expected_code) in cases {
+            let server = usage_server(ResponseTemplate::new(status)).await;
+
+            let error = client(&server, Some(FREE_KEY))
+                .check_key()
+                .await
+                .unwrap_err();
+
+            assert_eq!(error.code(), expected_code, "status {status}");
+        }
+    }
+
+    #[tokio::test]
+    async fn check_key_without_a_key_makes_no_request() {
+        let server = usage_server(ResponseTemplate::new(200)).await;
+
+        let error = client(&server, None).check_key().await.unwrap_err();
+
+        assert_eq!(error.code(), "missing_secret");
+        assert_eq!(request_count(&server).await, 0);
+    }
+
+    #[tokio::test]
+    async fn check_key_rejects_a_body_that_is_not_usage() {
+        let server = usage_server(ResponseTemplate::new(200).set_body_string("nada")).await;
+
+        let error = client(&server, Some(FREE_KEY))
+            .check_key()
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.code(), "upstream");
     }
 
     #[test]

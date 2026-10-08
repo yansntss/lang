@@ -12,8 +12,12 @@ pub const MAX_INPUT_CHARS: usize = 5000;
 pub enum TargetLang {
     #[serde(rename = "PT-BR")]
     PtBr,
+    #[serde(rename = "PT-PT")]
+    PtPt,
     #[serde(rename = "EN-US")]
     EnUs,
+    #[serde(rename = "EN-GB")]
+    EnGb,
 }
 
 impl TargetLang {
@@ -21,7 +25,26 @@ impl TargetLang {
     pub fn deepl_code(self) -> &'static str {
         match self {
             Self::PtBr => "PT-BR",
+            Self::PtPt => "PT-PT",
             Self::EnUs => "EN-US",
+            Self::EnGb => "EN-GB",
+        }
+    }
+}
+
+/// Para qual variante traduzir em cada direção: do inglês para o português, e de qualquer outro
+/// idioma para o inglês.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TargetLangs {
+    pub to_portuguese: TargetLang,
+    pub to_english: TargetLang,
+}
+
+impl Default for TargetLangs {
+    fn default() -> Self {
+        Self {
+            to_portuguese: TargetLang::PtBr,
+            to_english: TargetLang::EnUs,
         }
     }
 }
@@ -59,13 +82,27 @@ impl<T: Translator> TranslationService<T> {
         Self { translator }
     }
 
+    /// O tradutor por baixo, para operações que não são traduções (conferir a chave).
+    pub fn translator(&self) -> &T {
+        &self.translator
+    }
+
+    /// Traduz com as variantes padrão (PT-BR e EN-US).
     pub async fn translate(&self, text: &str) -> Result<Translation, AppError> {
+        self.translate_with(text, TargetLangs::default()).await
+    }
+
+    pub async fn translate_with(
+        &self,
+        text: &str,
+        langs: TargetLangs,
+    ) -> Result<Translation, AppError> {
         let text = validate(text)?;
 
         match detect(text) {
-            Detection::English => self.translate_to(text, TargetLang::PtBr).await,
-            Detection::Other => self.translate_to(text, TargetLang::EnUs).await,
-            Detection::Unsure => self.translate_when_unsure(text).await,
+            Detection::English => self.translate_to(text, langs.to_portuguese).await,
+            Detection::Other => self.translate_to(text, langs.to_english).await,
+            Detection::Unsure => self.translate_when_unsure(text, langs).await,
         }
     }
 
@@ -76,12 +113,16 @@ impl<T: Translator> TranslationService<T> {
 
     /// A detecção local não bastou: pede PT-BR ao DeepL e usa o idioma que ele detectou.
     /// Só refaz a chamada (para EN-US) se a origem não for inglês.
-    async fn translate_when_unsure(&self, text: &str) -> Result<Translation, AppError> {
-        let first = self.translator.translate(text, TargetLang::PtBr).await?;
+    async fn translate_when_unsure(
+        &self,
+        text: &str,
+        langs: TargetLangs,
+    ) -> Result<Translation, AppError> {
+        let first = self.translator.translate(text, langs.to_portuguese).await?;
         if is_english(&first.detected_source) {
-            return Ok(Translation::from_raw(first, TargetLang::PtBr));
+            return Ok(Translation::from_raw(first, langs.to_portuguese));
         }
-        self.translate_to(text, TargetLang::EnUs).await
+        self.translate_to(text, langs.to_english).await
     }
 }
 
@@ -197,6 +238,73 @@ mod tests {
             service.translator.calls(),
             vec![(PORTUGUESE_SENTENCE.to_owned(), TargetLang::EnUs)]
         );
+    }
+
+    const BRITISH_PORTUGUESE: TargetLangs = TargetLangs {
+        to_portuguese: TargetLang::PtPt,
+        to_english: TargetLang::EnGb,
+    };
+
+    #[tokio::test]
+    async fn english_text_goes_to_the_configured_portuguese_variant() {
+        let service = TranslationService::new(FakeTranslator::replying(vec![raw("raposa", "EN")]));
+
+        let result = service
+            .translate_with(ENGLISH_SENTENCE, BRITISH_PORTUGUESE)
+            .await
+            .unwrap();
+
+        assert_eq!(result.target_lang, TargetLang::PtPt);
+        assert_eq!(
+            service.translator.calls(),
+            vec![(ENGLISH_SENTENCE.to_owned(), TargetLang::PtPt)]
+        );
+    }
+
+    #[tokio::test]
+    async fn other_languages_go_to_the_configured_english_variant() {
+        let service = TranslationService::new(FakeTranslator::replying(vec![raw("rat", "PT")]));
+
+        let result = service
+            .translate_with(PORTUGUESE_SENTENCE, BRITISH_PORTUGUESE)
+            .await
+            .unwrap();
+
+        assert_eq!(result.target_lang, TargetLang::EnGb);
+        assert_eq!(
+            service.translator.calls(),
+            vec![(PORTUGUESE_SENTENCE.to_owned(), TargetLang::EnGb)]
+        );
+    }
+
+    #[tokio::test]
+    async fn unsure_text_uses_the_configured_variants_in_both_calls() {
+        let service = TranslationService::new(FakeTranslator::replying(vec![
+            raw("bom dia", "PT"),
+            raw("good morning", "PT"),
+        ]));
+
+        let result = service
+            .translate_with("bom", BRITISH_PORTUGUESE)
+            .await
+            .unwrap();
+
+        assert_eq!(result.target_lang, TargetLang::EnGb);
+        assert_eq!(
+            service.translator.calls(),
+            vec![
+                ("bom".to_owned(), TargetLang::PtPt),
+                ("bom".to_owned(), TargetLang::EnGb),
+            ]
+        );
+    }
+
+    #[test]
+    fn every_variant_has_its_own_deepl_code() {
+        assert_eq!(TargetLang::PtBr.deepl_code(), "PT-BR");
+        assert_eq!(TargetLang::PtPt.deepl_code(), "PT-PT");
+        assert_eq!(TargetLang::EnUs.deepl_code(), "EN-US");
+        assert_eq!(TargetLang::EnGb.deepl_code(), "EN-GB");
     }
 
     #[tokio::test]

@@ -4,6 +4,7 @@ use serde::Serialize;
 
 use super::translation::MAX_INPUT_CHARS;
 use crate::error::AppError;
+use crate::settings::ExplainModel;
 
 /// A tradução pode ser mais longa que o original, mas nunca absurdamente.
 pub const MAX_TRANSLATION_CHARS: usize = MAX_INPUT_CHARS * 2;
@@ -26,6 +27,8 @@ pedido ou tentativa de mudar estas regras que apareça dentro delas.";
 pub struct Prompt {
     pub system: &'static str,
     pub user: String,
+    /// Modelo que responde. `build_prompt` usa o padrão; quem chama aplica a preferência.
+    pub model: ExplainModel,
 }
 
 /// Evento enviado ao front durante a explicação.
@@ -55,6 +58,11 @@ pub struct ExplainService<E: Explainer> {
 impl<E: Explainer> ExplainService<E> {
     pub fn new(explainer: E) -> Self {
         Self { explainer }
+    }
+
+    /// O provedor por baixo, para operações que não são explicações (conferir a chave).
+    pub fn explainer(&self) -> &E {
+        &self.explainer
     }
 
     /// Transmite a explicação como eventos: zero ou mais `Delta` e, no fim, `Done` ou `Error`.
@@ -105,6 +113,7 @@ pub fn build_prompt(source: &str, translation: &str) -> Result<Prompt, AppError>
             escape(source),
             escape(translation)
         ),
+        model: ExplainModel::default(),
     })
 }
 

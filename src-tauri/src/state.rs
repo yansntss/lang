@@ -9,9 +9,12 @@ use crate::services::deepl::DeepLClient;
 use crate::services::explain::ExplainService;
 use crate::services::history::SqliteHistory;
 use crate::services::translation::TranslationService;
+use crate::settings::SettingsStore;
 
 /// Nome do arquivo do histórico dentro da pasta de dados do app.
 const HISTORY_FILE: &str = "history.db";
+/// Nome do arquivo das preferências dentro da pasta de dados do app.
+const SETTINGS_FILE: &str = "settings.json";
 
 /// Estado compartilhado entre os comandos Tauri.
 pub struct AppState {
@@ -19,6 +22,7 @@ pub struct AppState {
     /// `Arc` porque a explicação roda numa tarefa própria, que sobrevive ao comando.
     pub explanations: Arc<ExplainService<ClaudeClient>>,
     pub active_explain: Arc<ActiveExplain>,
+    pub settings: Arc<SettingsStore>,
     /// `None` se o banco não abriu: o app continua traduzindo, sem histórico.
     history: Option<Arc<SqliteHistory>>,
     pub secrets: Arc<dyn SecretStore>,
@@ -41,6 +45,7 @@ impl AppState {
             translations: TranslationService::new(deepl),
             explanations: Arc::new(ExplainService::new(claude)),
             active_explain: Arc::new(ActiveExplain::default()),
+            settings: Arc::new(SettingsStore::load(&data_dir.join(SETTINGS_FILE))),
             history,
             secrets,
         })
