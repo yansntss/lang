@@ -7,6 +7,7 @@ use state::AppState;
 
 pub mod commands;
 pub mod error;
+pub mod fatal;
 pub mod platform;
 pub mod secrets;
 pub mod services;
@@ -16,6 +17,7 @@ pub mod state;
 pub use error::AppError;
 
 pub fn run() -> tauri::Result<()> {
+    fatal::install_panic_hook();
     tauri::Builder::default()
         // A instância única precisa ser o primeiro plugin registrado.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
