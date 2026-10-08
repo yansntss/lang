@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { SecretKind, Translation } from "./types";
+import type { PopupResetPayload, SecretKind, Translation } from "./types";
 
 // Único ponto do front que fala com o backend. Nenhum comando devolve chaves de API.
 
@@ -32,9 +32,12 @@ export function deleteSecret(kind: SecretKind): Promise<void> {
   return invoke<void>("delete_secret", { kind });
 }
 
-/** Devolve a função que cancela a escuta. */
-export function onPopupReset(handler: () => void): Promise<() => void> {
-  return listen(POPUP_RESET_EVENT, () => handler());
+/**
+ * O popup foi exibido de novo. `prefill` é o texto que o usuário tinha selecionado em outro
+ * app, ou `null` quando não houve captura. Devolve a função que cancela a escuta.
+ */
+export function onPopupReset(handler: (prefill: string | null) => void): Promise<() => void> {
+  return listen<PopupResetPayload>(POPUP_RESET_EVENT, (event) => handler(event.payload.prefill));
 }
 
 /** Extrai uma mensagem exibível de um erro do backend ou de qualquer valor lançado. */

@@ -12,8 +12,10 @@ export default function PopupApp() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const result = useTranslate(text);
 
-  const reset = useCallback(() => {
-    setText("");
+  // Texto capturado da seleção do usuário (se houver) substitui o que estava no campo, e a
+  // tradução começa sozinha pelo mesmo caminho da digitação.
+  const reset = useCallback((prefill: string | null) => {
+    setText(prefill ?? "");
     setActionError(null);
     inputRef.current?.focus();
   }, []);

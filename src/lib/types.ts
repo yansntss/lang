@@ -13,3 +13,8 @@ export interface AppErrorDto {
 }
 
 export type SecretKind = "deepl" | "anthropic";
+
+/** Corpo do evento `popup://reset`. */
+export interface PopupResetPayload {
+  prefill: string | null;
+}

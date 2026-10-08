@@ -21,7 +21,7 @@ const onPopupReset = vi.mocked(tauri.onPopupReset);
 // Timers reais: o debounce padrão é 400 ms, então esperamos um pouco mais que isso.
 const AFTER_DEBOUNCE_MS = 450;
 
-let resetHandler: (() => void) | undefined;
+let resetHandler: ((prefill: string | null) => void) | undefined;
 
 function translation(text: string): Translation {
   return { text, sourceLang: "EN", targetLang: "PT-BR" };
@@ -251,9 +251,44 @@ describe("PopupApp", () => {
     await user.type(field(), "hello");
     await user.tab();
 
-    await act(async () => resetHandler?.());
+    await act(async () => resetHandler?.(null));
 
     expect(field()).toHaveValue("");
     expect(field()).toHaveFocus();
+  });
+
+  it("fills the field with the captured selection and translates it", async () => {
+    translate.mockResolvedValue(translation("olá"));
+    render(<PopupApp />);
+
+    await act(async () => resetHandler?.("hello world"));
+
+    expect(field()).toHaveValue("hello world");
+    expect(field()).toHaveFocus();
+    expect(await screen.findByText("olá")).toBeInTheDocument();
+    expect(translate).toHaveBeenCalledExactlyOnceWith("hello world");
+  });
+
+  it("replaces previously typed text when a new selection is captured", async () => {
+    translate.mockResolvedValue(translation("novo"));
+    const user = userEvent.setup();
+    render(<PopupApp />);
+    await user.type(field(), "texto antigo");
+
+    await act(async () => resetHandler?.("new selection"));
+
+    expect(field()).toHaveValue("new selection");
+  });
+
+  it("lets Enter copy the translation of a captured selection", async () => {
+    translate.mockResolvedValue(translation("olá"));
+    const user = userEvent.setup();
+    render(<PopupApp />);
+    await act(async () => resetHandler?.("hello"));
+    await screen.findByText("olá");
+
+    await user.keyboard("{Enter}");
+
+    expect(copyToClipboard).toHaveBeenCalledExactlyOnceWith("olá");
   });
 });

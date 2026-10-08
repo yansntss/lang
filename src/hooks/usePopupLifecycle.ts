@@ -2,8 +2,8 @@ import { useEffect, useRef } from "react";
 import { errorMessage, hidePopup, onPopupReset } from "../lib/tauri";
 
 interface PopupLifecycleHandlers {
-  /** O popup foi exibido de novo: limpar o texto e focar o campo. */
-  onReset: () => void;
+  /** O popup foi exibido de novo: focar o campo e preenchê-lo com o texto capturado, se houver. */
+  onReset: (prefill: string | null) => void;
   onError: (message: string) => void;
 }
 
@@ -18,7 +18,7 @@ export function usePopupLifecycle({ onReset, onError }: PopupLifecycleHandlers):
     let disposed = false;
     let stopListening: (() => void) | undefined;
 
-    onPopupReset(() => handlers.current.onReset()).then(
+    onPopupReset((prefill) => handlers.current.onReset(prefill)).then(
       (stop) => {
         if (disposed) {
           stop();
