@@ -1,0 +1,94 @@
+name: Release
+
+# Publica uma versão quando uma tag `v*` é enviada (ex.: `git tag v0.1.1 && git push origin v0.1.1`).
+# O release é publicado direto; por isso os testes rodam antes e, se falharem, nada é publicado.
+on:
+  push:
+    tags: ["v*"]
+
+# Nada por padrão; cada job pede só o que precisa.
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: Testes e auditoria
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Instalador assinado e release
+    needs: ci
+    runs-on: windows-latest
+    timeout-minutes: 60
+    # Os segredos de assinatura são do ambiente `release`, restrito a tags `v*`
+    # (Settings → Environments → release → Deployment branches and tags).
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      # Histórico completo: o passo seguinte confere se a tag está na `main`.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Só publica código que já está na `main`: uma tag solta num branch qualquer (ou num
+      # commit com o workflow alterado) não gera release.
+      - name: A tag está na main
+        shell: pwsh
+        run: |
+          git merge-base --is-ancestor $env:GITHUB_SHA origin/main
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "O commit da tag não está na branch main; nada será publicado."
+            exit 1
+          }
+
+      # Este job tem a chave de assinatura no ambiente: sem cache restaurado (npm ou Cargo), para
+      # que um cache envenenado não entre no build assinado.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+        with:
+          toolchain: stable
+
+      - name: Dependências do front
+        run: npm ci
+
+      # Falha se o Cargo.lock estiver desatualizado, em vez de resolver versões novas no build.
+      - name: Cargo.lock em dia
+        shell: pwsh
+        run: |
+          cargo metadata --locked --format-version 1 --manifest-path src-tauri/Cargo.toml | Out-Null
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      # A tag vem por variável de ambiente, nunca interpolada no script.
+      - name: A tag é igual à versão do app
+        run: node scripts/check-version.mjs $env:TAG
+        env:
+          TAG: ${{ github.ref_name }}
+
+      - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Tradutor ${{ github.ref_name }}
+          releaseBody: >-
+            Tradutor ${{ github.ref_name }} para Windows. Instalação nova: baixe o arquivo
+            terminado em -setup.exe. O Windows SmartScreen vai avisar sobre editor desconhecido,
+            porque o instalador não é assinado com certificado de código: clique em Mais
+            informações e depois em Executar assim mesmo. Quem já usa o app atualiza em
+            Configurações, Sobre e atualizações.
+          releaseDraft: false
+          # Uma tag com sufixo (v1.0.0-rc.1) vira pré-release, que o atualizador não oferece.
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          includeUpdaterJson: true

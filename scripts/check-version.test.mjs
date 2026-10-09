@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { cargoVersion, findVersionMismatch } from "./check-version.mjs";
+import { cargoVersion, findTagMismatch, findVersionMismatch } from "./check-version.mjs";
+
+describe("findTagMismatch", () => {
+  it("accepts the tag that is v plus the version", () => {
+    expect(findTagMismatch("v0.1.1", "0.1.1")).toBeNull();
+  });
+
+  it("rejects a different version, a missing v and anything extra", () => {
+    for (const tag of ["v0.1.2", "0.1.1", "v0.1.1-rc.1", "release-0.1.1", ""]) {
+      expect(findTagMismatch(tag, "0.1.1"), tag).toContain("não corresponde");
+    }
+  });
+});
 
 describe("cargoVersion", () => {
   it("reads the version of the [package] section", () => {

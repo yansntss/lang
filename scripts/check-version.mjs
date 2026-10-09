@@ -31,6 +31,14 @@ export function findVersionMismatch(versions) {
   return `As versões divergem:\n${lines.join("\n")}`;
 }
 
+/** A tag de um release tem de ser `v` + a versão do app; devolve a mensagem de erro ou `null`. */
+export function findTagMismatch(tag, version) {
+  const expected = `v${version}`;
+  return tag === expected
+    ? null
+    : `A tag "${tag}" não corresponde à versão do app (esperado "${expected}").`;
+}
+
 function readVersions() {
   return {
     "package.json": JSON.parse(readFileSync(root("package.json"), "utf8")).version,
@@ -43,10 +51,13 @@ function readVersions() {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const versions = readVersions();
-  const problem = findVersionMismatch(versions);
+  const version = Object.values(versions)[0];
+  // Com um argumento (ex.: `node scripts/check-version.mjs v0.1.1`), confere também a tag.
+  const tag = process.argv[2];
+  const problem = findVersionMismatch(versions) ?? (tag ? findTagMismatch(tag, version) : null);
   if (problem) {
     console.error(problem);
     process.exit(1);
   }
-  console.log(`Versão ${Object.values(versions)[0]} em sincronia nos três arquivos.`);
+  console.log(`Versão ${version} em sincronia nos três arquivos${tag ? ` e na tag ${tag}` : ""}.`);
 }

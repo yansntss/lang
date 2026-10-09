@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "check:version": "node scripts/check-version.mjs",
+    "version:bump": "node scripts/bump-version.mjs",
+    "build:local": "tauri build --config src-tauri/tauri.local.conf.json",
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",

@@ -1,0 +1,21 @@
+# Atualizações semanais. As ações do GitHub estão fixadas por commit, então sem isto elas
+# envelheceriam em silêncio; as dependências também ganham alertas de segurança.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
