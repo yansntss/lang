@@ -21,7 +21,23 @@ export interface Preferences {
 export interface SettingsView extends Preferences {
   shortcut: string;
   autostart: boolean;
+  /** Versão do app em execução. */
+  appVersion: string;
 }
+
+/** Uma versão nova encontrada (espelha `AvailableUpdate` do backend). */
+export interface AvailableUpdate {
+  version: string;
+  /** Notas da versão, em texto puro. */
+  notes: string | null;
+  /** Milissegundos desde 1970 UTC. */
+  publishedAt: number | null;
+}
+
+/** Andamento da instalação (espelha `UpdateEvent` do backend). */
+export type UpdateEvent =
+  | { kind: "progress"; downloaded: number; total: number | null }
+  | { kind: "installing" };
 
 /** Resultado de "Testar chave". `usage` vem preenchido só para o DeepL. */
 export interface KeyCheck {

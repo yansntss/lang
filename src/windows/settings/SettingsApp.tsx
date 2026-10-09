@@ -6,6 +6,7 @@ import "../../styles/base.css";
 import GeneralSection from "./GeneralSection";
 import SecretSection from "./SecretSection";
 import ShortcutSection from "./ShortcutSection";
+import UpdateSection from "./UpdateSection";
 import "./settings.css";
 
 const DEEPL_HINT =
@@ -54,6 +55,7 @@ export default function SettingsApp() {
         <>
           <ShortcutSection shortcut={settings.shortcut} onChanged={handleChanged} />
           <GeneralSection settings={settings} onChanged={handleChanged} />
+          <UpdateSection version={settings.appVersion} />
         </>
       ) : loadError ? (
         <p role="alert" className="settings__feedback settings__feedback--error">

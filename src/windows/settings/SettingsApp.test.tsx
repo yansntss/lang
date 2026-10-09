@@ -33,6 +33,7 @@ const BACKEND_ERROR = { code: "settings", message: "Não foi possível salvar as
 const BASE: SettingsView = {
   shortcut: "Ctrl+Alt+T",
   autostart: false,
+  appVersion: "0.1.0",
   theme: "system",
   englishVariant: "EN-US",
   portugueseVariant: "PT-BR",

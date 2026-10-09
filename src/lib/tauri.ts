@@ -1,6 +1,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type {
+  AvailableUpdate,
   ExplainEvent,
   HistoryEntry,
   HistoryRecord,
@@ -10,6 +11,7 @@ import type {
   SecretKind,
   SettingsView,
   Translation,
+  UpdateEvent,
 } from "./types";
 
 // Único ponto do front que fala com o backend. Nenhum comando devolve chaves de API.
@@ -131,6 +133,21 @@ export function setShortcut(accelerator: string): Promise<SettingsView> {
 
 export function setAutostart(enabled: boolean): Promise<void> {
   return invoke<void>("set_autostart", { enabled });
+}
+
+/** Procura uma versão nova. `null` significa que o app já está na mais recente. */
+export function checkUpdate(): Promise<AvailableUpdate | null> {
+  return invoke<AvailableUpdate | null>("check_update");
+}
+
+/**
+ * Baixa e instala a versão que a última verificação encontrou. O andamento chega em `onEvent`.
+ * No Windows o app encerra sozinho quando o instalador assume.
+ */
+export function installUpdate(onEvent: (event: UpdateEvent) => void): Promise<void> {
+  const channel = new Channel<UpdateEvent>();
+  channel.onmessage = onEvent;
+  return invoke<void>("install_update", { onEvent: channel });
 }
 
 /**

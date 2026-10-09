@@ -24,6 +24,7 @@ const translation: Translation = { text: "olá", sourceLang: "EN", targetLang: "
 const SETTINGS: SettingsView = {
   shortcut: "Ctrl+Alt+T",
   autostart: false,
+  appVersion: "0.1.0",
   theme: "system",
   englishVariant: "EN-US",
   portugueseVariant: "PT-BR",

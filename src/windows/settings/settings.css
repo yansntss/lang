@@ -125,3 +125,22 @@
   background: var(--surface);
   font: inherit;
 }
+
+.settings__notes {
+  max-height: 160px;
+  margin: 4px 0 8px;
+  padding: 8px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
+.settings__progress {
+  display: block;
+  width: 100%;
+  margin: 6px 0;
+}
