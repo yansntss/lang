@@ -11,6 +11,8 @@
     "allow-get-settings",
     "allow-update-settings",
     "allow-set-shortcut",
-    "allow-set-autostart"
+    "allow-set-autostart",
+    "allow-check-update",
+    "allow-install-update"
   ]
 }

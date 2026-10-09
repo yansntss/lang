@@ -33,6 +33,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
     "publisher": "yansntss",
     "copyright": "Copyright © 2026 yansntss",
     "category": "Utility",
@@ -52,5 +53,15 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVBMTM4MTY1NEQ4OUE0NUMKUldSY3BJbE5aWUVUV3QwdTZ2M2VCSXNxeWdSY2RXbXN6Ymx4SmEyUUZiMm9EZVYvK1ZwZWhZQmkK",
+      "endpoints": ["https://github.com/yansntss/lang/releases/latest/download/latest.json"],
+      "requireSignedVersion": true,
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

@@ -49,6 +49,9 @@ pub enum AppError {
 
     #[error("Não foi possível salvar as configurações.")]
     Settings(String),
+
+    #[error("Não foi possível concluir a atualização.")]
+    Update(String),
 }
 
 impl AppError {
@@ -67,6 +70,7 @@ impl AppError {
             Self::Capture(_) => "capture",
             Self::History(_) => "history",
             Self::Settings(_) => "settings",
+            Self::Update(_) => "update",
         }
     }
 }
@@ -178,6 +182,11 @@ mod tests {
                 AppError::Settings("Permission denied (os error 5)".into()),
                 "settings",
                 "Não foi possível salvar as configurações.",
+            ),
+            (
+                AppError::Update("signature verification failed: key id 4F2A".into()),
+                "update",
+                "Não foi possível concluir a atualização.",
             ),
         ];
 

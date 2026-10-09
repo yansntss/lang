@@ -3,6 +3,7 @@ use tauri::Manager;
 use platform::popup_window::{handle_window_event, show_near_cursor, PopupState};
 use platform::{capture_config, log_failure, settings_window, shortcut, tray};
 use secrets::SecretKind;
+use services::update::{TauriUpdateSource, UpdateService};
 use state::AppState;
 
 pub mod commands;
@@ -33,6 +34,8 @@ pub fn run() -> tauri::Result<()> {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        // O front não tem permissão no plugin: só os comandos `check_update` e `install_update`.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(shortcut::plugin())
         .manage(PopupState::default())
         .setup(setup)
@@ -61,6 +64,8 @@ pub fn run() -> tauri::Result<()> {
             commands::settings::set_shortcut,
             commands::settings::set_autostart,
             commands::settings::test_secret,
+            commands::update::check_update,
+            commands::update::install_update,
         ])
         .run(tauri::generate_context!())
 }
@@ -68,6 +73,9 @@ pub fn run() -> tauri::Result<()> {
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let data_dir = app.path().app_data_dir()?;
     app.manage(AppState::new(&data_dir)?);
+    app.manage(UpdateService::new(TauriUpdateSource::new(
+        app.handle().clone(),
+    )));
 
     let settings = app.state::<AppState>().settings.get();
     capture_config::set_allow_editors(settings.preferences.capture_in_editors);

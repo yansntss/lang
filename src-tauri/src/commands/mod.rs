@@ -3,4 +3,5 @@ pub mod history;
 pub mod secrets;
 pub mod settings;
 pub mod translate;
+pub mod update;
 pub mod window;

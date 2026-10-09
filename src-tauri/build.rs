@@ -20,6 +20,8 @@ const APP_COMMANDS: &[&str] = &[
     "set_shortcut",
     "set_autostart",
     "test_secret",
+    "check_update",
+    "install_update",
     "hide_popup",
     "set_secret",
     "has_secret",

@@ -7,3 +7,4 @@ pub mod history;
 pub mod lang_detect;
 pub mod sse;
 pub mod translation;
+pub mod update;

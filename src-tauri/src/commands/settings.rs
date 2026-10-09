@@ -17,6 +17,8 @@ pub struct SettingsView {
     settings: Settings,
     /// Lido do sistema (entrada de inicialização do Windows), não do arquivo.
     autostart: bool,
+    /// Versão do app em execução (a do `tauri.conf.json`), para a seção de atualizações.
+    app_version: String,
 }
 
 /// Resultado de "Testar chave".
@@ -35,6 +37,7 @@ fn view(app: &AppHandle, settings: Settings) -> SettingsView {
     SettingsView {
         settings,
         autostart,
+        app_version: app.package_info().version.to_string(),
     }
 }
 
@@ -107,12 +110,14 @@ mod tests {
         let json = serde_json::to_value(SettingsView {
             settings: Settings::default(),
             autostart: true,
+            app_version: "0.1.0".into(),
         })
         .unwrap();
 
         assert_eq!(json["shortcut"], "Ctrl+Alt+T");
         assert_eq!(json["theme"], "system");
         assert_eq!(json["autostart"], true);
+        assert_eq!(json["appVersion"], "0.1.0");
         assert_eq!(json["autoTranslateSelection"], true);
     }
 
