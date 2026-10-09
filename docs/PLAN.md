@@ -13,7 +13,9 @@ Atualizado ao fim de cada fase. Marcar `[x]` ao concluir.
   (checklist na seção da Fase 5).
 - Fase 6a (distribuição: instalador NSIS, ícone, README, CI, auditoria, falha de inicialização)
   **feita e testada localmente**; falta só instalar e conferir (checklist na seção da Fase 6).
-- **Próximo: 6b (atualizador e release)**, que depende de uma decisão sobre o repositório privado.
+- Fase 6b (atualizador e release) **implementada e testada localmente**; falta o teste ponta a
+  ponta no GitHub (publicar `v0.1.0`, instalar, publicar `v0.1.1` e atualizar pelo app; ver o
+  checklist da Fase 6b).
 - As duas decisões da Fase 2 viraram opções nas Configurações (editores na captura: desligada;
   traduzir a seleção sozinha: ligada). Continua em aberto:
   - Histórico ligado por padrão grava texto selecionado em claro desde o primeiro Enter:
@@ -374,9 +376,26 @@ Dividida em **6a** (sem depender do GitHub; feita) e **6b** (atualizador e relea
 - [x] Falha de inicialização visível e pânico em log
 - [x] Versão única nos três arquivos (`npm run check:version`)
 
-6b (pendente):
-- [ ] `tauri-plugin-updater` com chave própria + GitHub Releases + workflow de release
-  (bloqueado: o repositório `github.com/yansntss/lang` é **privado**; veja as notas)
+6b (implementada; falta o teste ponta a ponta):
+- [x] Chave de assinatura própria (fora do repositório; só a pública está no `tauri.conf.json`)
+- [x] `tauri-plugin-updater` chamado só pelo Rust; comandos `check_update` e `install_update`
+- [x] Seção "Sobre e atualizações" nas Configurações (manual, sem verificação automática)
+- [x] Workflow `release.yml` (tag `v*`), `version:bump`, `build:local` e Dependabot
+- [ ] Teste ponta a ponta: release `v0.1.0` → instalar → release `v0.1.1` → atualizar pelo app
+
+Verificação ponta a ponta (pendente; cria releases públicos, então só com a ordem do autor):
+- [ ] Ambiente `release` do GitHub com os dois segredos e a regra de tag `v*` (feito pelo autor)
+- [ ] `git tag v0.1.0` + `git push origin v0.1.0`: o workflow roda os testes, assina e publica o
+  release com o `.exe`, o `.sig` e o `latest.json`
+- [ ] Conferir no release: o `latest.json` aponta para o `.exe` e a `signature` não está vazia
+- [ ] Instalar o `v0.1.0` baixado do release (SmartScreen: Mais informações → Executar assim mesmo)
+- [ ] `npm run version:bump -- 0.1.1`, commit, push, tag `v0.1.1` e `git push origin v0.1.1`
+- [ ] No app instalado (0.1.0): Configurações → Sobre e atualizações → Verificar → Instalar e
+  reiniciar: o app fecha, o instalador mostra o progresso e o app reabre na 0.1.1 (confirmar que
+  histórico, chaves e configurações continuam)
+- [ ] Verificar de novo na 0.1.1: "Você já está na versão mais recente"
+- [ ] Se a atualização for recusada por causa do `requireSignedVersion`, ver o log
+  (`%LOCALAPPDATA%\com.yansa.lang-app\logs`); a opção pode ser desligada em `tauri.conf.json`
 
 Verificação manual (pendente; o instalador está em
 `src-tauri/target/release/bundle/nsis/Tradutor_0.1.0_x64-setup.exe`, 3,42 MiB):
@@ -432,14 +451,48 @@ fixadas. Pendências (baixo risco ou só se o repositório virar público):
 - `startup-error.log` cresce sem limite e é aberto sem checar link simbólico (risco baixo: pasta
   do próprio usuário); `style-src 'unsafe-inline'` continua no CSP de release.
 
-Notas da 6b (atualizador):
-- O atualizador consulta uma URL pública de `latest.json`. Com o repositório **privado**, o
-  GitHub Releases exige autenticação, e embutir um token no app seria um vazamento. O autor vai
-  tornar o repositório público, o que destrava a 6b (o `latest.json` fica acessível sem
-  autenticação).
-- Com o atualizador: `tauri-plugin-updater` chamado só pelo Rust, chave pública no
-  `tauri.conf.json`, chave privada só como segredo do GitHub (com backup fora do repositório),
-  seção "Sobre e atualizações" nas Configurações e workflow de release por tag `v*`.
+Notas da 6b (atualizador e release):
+- O repositório passou a ser público (decisão do autor), então o `latest.json` do GitHub Releases
+  é acessível sem autenticação. O endpoint é fixo no `tauri.conf.json`:
+  `https://github.com/yansntss/lang/releases/latest/download/latest.json`.
+- **Só o Rust fala com o plugin.** Nenhuma janela tem permissão `updater:*`; só a janela de
+  Configurações recebe `check_update` e `install_update` (há testes que travam isso). O front não
+  escolhe endpoint, URL nem arquivo: instala exatamente a versão achada pela última verificação.
+- **Estado:** uma operação por vez (verificar ou instalar); uma verificação que falha apaga a
+  anterior; instalar sem verificar é erro. "Ainda não há release" (404) vira "já está na versão
+  mais recente". Erros chegam ao front como frases genéricas; o detalhe vai ao log.
+- **Segurança da atualização:** o plugin confere a assinatura minisign do instalador com a chave
+  pública. `requireSignedVersion` está ligado: o `latest.json` não é assinado, então ele exige que
+  a versão anunciada seja a gravada **dentro da assinatura** (impede empurrar um instalador antigo e
+  legítimo com um número de versão inflado). Foi **verificado na prática**: o CLI 2.12.1 grava
+  `version:0.1.0` no comentário confiável da `.sig` (testado com uma chave descartável, já
+  apagada). `allow_downgrades` e todas as opções `dangerous_*` ficam desligadas (teste lê o
+  `tauri.conf.json` real com o parser do plugin).
+- **Notas da versão** vêm de fora: texto puro, sem caracteres de controle nem de direção de
+  texto, cortadas em 4000 caracteres.
+- **Release (`release.yml`)** publica **direto, sem rascunho** (decisão do autor). Mitigações:
+  roda antes os mesmos testes e a auditoria do CI (`workflow_call`); confere que a tag é `v` +
+  versão do app; recusa uma tag cujo commit não está na `main`; tag com sufixo (`-rc.1`) vira
+  pré-release, que o atualizador não oferece; o job que tem a chave não restaura cache de npm
+  nem de Cargo; confere que o `Cargo.lock` está em dia (`cargo metadata --locked`); ações fixadas
+  por commit; `permissions: {}` no topo e `contents: write` só no job de release; segredos só no
+  ambiente `release`, restrito a tags `v*`.
+- **Se a chave se perder ou vazar:** procedimento no README (seção "Publicar uma versão").
+- **Instalador local:** `npm run build:local` (sem a chave) gera o instalador sem os arquivos de
+  atualização; `npm run tauri build` completo exige as variáveis `TAURI_SIGNING_PRIVATE_KEY*`.
+
+Revisão de segurança da 6b (security-reviewer): sem itens críticos ou altos. Corrigido: corrida
+entre verificar e instalar (uma trava só), caracteres enganosos nas notas, cache no job de release,
+tag fora da `main`, pré-release, documentação de perda/vazamento da chave, Dependabot. Pendências
+(decisão do autor ou baixo risco):
+- **Publicação direta, sem aprovação:** quem tiver escrita no repositório e empurrar uma tag `v*`
+  publica uma versão assinada. Recomendado no GitHub: 2FA com chave física, ruleset de tags `v*` e
+  proteção da `main`, e "Required reviewers" no ambiente `release` (instruções no README). O
+  `releaseDraft: true` seria o controle mais barato se o autor mudar de ideia.
+- A chave privada ainda fica no ambiente do passo de build (que executa `build.rs`, macros e
+  scripts de dependências). O ideal seria compilar sem a chave e assinar num passo final
+  (`tauri signer sign` + `latest.json` manual); fica como melhoria.
+- Toolchain do Rust e `windows-latest` não são fixos (reprodutibilidade).
 
 ## Riscos
 | Risco | Mitigação |
