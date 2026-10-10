@@ -504,8 +504,19 @@ tag fora da `main`, pré-release, documentação de perda/vazamento da chave, De
   janela de volta para dentro do monitor. Só a altura cresce; a largura é do usuário.
 - Um `Resized` que o app acabou de pedir não conta como escolha do usuário (`popup_size.rs`,
   `is_echo`), nem os que ocorrem nos 300 ms após a exibição.
-- Verificação manual pendente: confirmar no Windows que a borda de uma janela sem decoração
-  (`decorations: false`) pode ser arrastada, e o comportamento em monitores com DPI diferente.
+- A borda nativa não serviu: numa janela sem decoração o Tauri (`tauri-runtime-wry`,
+  `undecorated_resizing`) usa uma faixa invisível da largura de `SM_CXFRAME` (cerca de 4 px), e
+  o usuário não conseguiu redimensionar. O popup tem agora alças próprias (`ResizeGrips`, 6 px
+  nas bordas e 10 px nos cantos, dentro do padding) que chamam `start_popup_resizing`, e o
+  sistema conduz o arrasto (`Window::start_resize_dragging`). `ResizeEdge` é uma lista fechada.
+- Mover: duplo clique segurado (`event.detail === 2`) fora do campo, dos botões e dos textos
+  selecionáveis chama `start_popup_dragging` (`useWindowDrag`).
+- Fixar: botão de alfinete no canto do campo (`PinButton`). Fixado, o blur não oculta, o
+  atalho com o popup visível só foca e preenche (sem reposicionar), e o Enter copia sem fechar.
+  Ocultar (Esc) solta. O estado vive no Rust (`PopupState.pinned`) e volta ao front pelo
+  `popup://reset`. Não persiste entre execuções.
+- Verificação manual pendente: alças, arrasto e fixar no Windows real, e monitores com DPI
+  diferente.
 
 ## Riscos
 | Risco | Mitigação |

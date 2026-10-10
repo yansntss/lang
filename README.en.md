@@ -51,7 +51,9 @@ installer from GitHub Releases, verifies its signature and installs over the cur
 | Translate text from another app | Select the text and press the shortcut |
 | Copy the translation | **Enter** (also saves it to the history) |
 | Close | **Esc**, or click outside |
-| Resize | Drag the edges of the box. The size is remembered, and the box grows by itself to fit the translation and the explanation |
+| Resize | Drag the edges or corners of the box (the cursor changes over them). The size is remembered, and the box grows by itself to fit the translation and the explanation |
+| Move | Double-click an empty area of the box and hold the second click, then drag |
+| Keep on screen | Pin button in the corner of the text field: while pinned, the popup does not disappear when you click another app and **Enter** copies without closing. **Esc** closes and unpins |
 | Understand the translation | **Explain** button (needs the Anthropic key) |
 | History, settings, quit | Tray icon menu |
 
