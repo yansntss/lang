@@ -1,4 +1,6 @@
-# Shortcut Translator (Tradutor por atalho)
+<p align="center"><img src="assets/icon/lang-icon.svg" alt="Lang" width="96" height="96"></p>
+
+# Lang — shortcut translator
 
 **English** · [Português](README.md)
 
@@ -26,7 +28,7 @@ English. **Esc** closes it; **Enter** copies the translation and closes.
 
 ## Installation
 
-1. Download the installer `Tradutor_<version>_x64-setup.exe` from the repository's **Releases**
+1. Download the installer `Lang_<version>_x64-setup.exe` from the repository's **Releases**
    page.
 2. Run it. The installation is **per user**: it does not ask for administrator rights.
 3. Windows SmartScreen will warn about an **"unknown publisher"**, because the installer is not

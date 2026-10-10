@@ -1,4 +1,6 @@
-# Tradutor por atalho
+<p align="center"><img src="assets/icon/lang-icon.svg" alt="Lang" width="96" height="96"></p>
+
+# Lang — tradutor por atalho
 
 [English](README.en.md) · **Português**
 
@@ -25,7 +27,7 @@ idioma vira inglês. **Esc** fecha; **Enter** copia a tradução e fecha.
 
 ## Instalação
 
-1. Baixe o instalador `Tradutor_<versão>_x64-setup.exe` na página **Releases** do repositório.
+1. Baixe o instalador `Lang_<versão>_x64-setup.exe` na página **Releases** do repositório.
 2. Execute-o. A instalação é **por usuário**: não pede administrador.
 3. O Windows SmartScreen vai avisar sobre um **"editor desconhecido"**, porque o instalador não é
    assinado (assinatura de código é paga). Clique em **Mais informações → Executar assim mesmo**.

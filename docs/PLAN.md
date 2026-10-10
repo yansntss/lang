@@ -522,6 +522,23 @@ tag fora da `main`, pré-release, documentação de perda/vazamento da chave, De
 - Verificação manual pendente: alças, arrasto e fixar no Windows real, e monitores com DPI
   diferente.
 
+## Identidade visual (Lang)
+
+Status: concluída.
+
+- Nome "Lang": `productName`, título do popup, dica da bandeja, pacote npm `lang`, crate `lang`
+  (exe `lang.exe`, lib `lang_lib`). O instalador passa a se chamar `Lang_<versão>_x64-setup.exe`.
+- O `identifier` continua `com.yansa.lang-app`: ele nomeia a pasta de dados (configurações e
+  histórico) e o serviço do keychain. Trocar perderia as chaves e o histórico.
+- Fontes em `assets/icon/`: `lang-icon.svg` (colorido) e `lang-icon-mono.svg` (`currentColor`).
+  `src-tauri/icons/` é gerado com `npm run tauri icon assets/icon/lang-icon.svg` (sem as pastas
+  `android/` e `ios/`).
+- Bandeja: Windows/Linux usam o ícone do app. No macOS, `icons/tray/tray-template@2x.png` (preto,
+  44 px; há também o de 22 px) com `icon_as_template(true)`. Gerado do SVG mono com `currentColor`
+  trocado por preto e `tauri icon --png 22,44`. Sem teste no macOS.
+- Favicon SVG nas três páginas; no popup, o ícone de 14 px fica ao lado do alfinete
+  (`.popup__corner`), com `pointer-events: none` para o clique cair no campo.
+
 ## Riscos
 | Risco | Mitigação |
 |---|---|
