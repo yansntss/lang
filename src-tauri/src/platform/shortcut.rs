@@ -109,9 +109,7 @@ pub fn swap(
                     old.label
                 );
             }
-            Err(AppError::InvalidInput(
-                "Não foi possível usar esse atalho. Outro app pode já estar usando.".into(),
-            ))
+            Err(AppError::ShortcutInUse)
         }
     }
 }
@@ -340,6 +338,27 @@ mod tests {
 
         let error = swap(&registrar, &old, &new).unwrap_err();
 
+        assert_eq!(error.code(), "shortcut_in_use");
+        assert_eq!(registrar.registered(), vec![old.shortcut]);
+    }
+
+    #[test]
+    fn the_error_stays_shortcut_in_use_even_if_the_rollback_fails() {
+        let (old, new) = (accelerator("Ctrl+Alt+T"), accelerator("Ctrl+Alt+K"));
+        let registrar = FakeRegistrar::with(&[&old], &[&new, &old]);
+
+        let error = swap(&registrar, &old, &new).unwrap_err();
+
+        assert_eq!(error.code(), "shortcut_in_use");
+    }
+
+    #[test]
+    fn an_invalid_shortcut_is_rejected_before_touching_the_registrar() {
+        let old = accelerator("Ctrl+Alt+T");
+        let registrar = FakeRegistrar::with(&[&old], &[]);
+
+        let error = accelerator::parse("Ctrl+C").unwrap_err();
+
         assert_eq!(error.code(), "invalid_input");
         assert_eq!(registrar.registered(), vec![old.shortcut]);
     }
@@ -394,7 +413,7 @@ mod tests {
 
         let error = apply_shortcut(&registrar, &store, &new).unwrap_err();
 
-        assert_eq!(error.code(), "invalid_input");
+        assert_eq!(error.code(), "shortcut_in_use");
         assert_eq!(store.get().shortcut, "Ctrl+Alt+T");
         assert_eq!(registrar.registered(), vec![old.shortcut]);
         assert!(!dir.path().join("settings.json").exists());

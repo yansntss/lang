@@ -297,8 +297,8 @@ describe("SettingsApp — atalho", () => {
 
   it("keeps the current shortcut and shows why when the system refuses the new one", async () => {
     setShortcut.mockRejectedValue({
-      code: "invalid_input",
-      message: "Não foi possível usar esse atalho. Outro app pode já estar usando.",
+      code: "shortcut_in_use",
+      message: "Esse atalho já está em uso por outro app. Escolha outro.",
     });
     const user = userEvent.setup();
     await renderSettled();
@@ -307,7 +307,7 @@ describe("SettingsApp — atalho", () => {
     fireEvent.keyDown(window, { code: "KeyK", ctrlKey: true, altKey: true });
 
     expect(await within(shortcut()).findByRole("alert")).toHaveTextContent(
-      "Outro app pode já estar usando",
+      "já está em uso por outro app",
     );
     expect(within(shortcut()).getByText("Ctrl+Alt+T", { selector: "kbd" })).toBeInTheDocument();
   });

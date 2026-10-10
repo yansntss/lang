@@ -20,6 +20,10 @@ pub enum AppError {
     #[error("{0}")]
     InvalidInput(String),
 
+    /// O sistema recusou registrar o atalho (em geral, outro app já o usa).
+    #[error("Esse atalho já está em uso por outro app. Escolha outro.")]
+    ShortcutInUse,
+
     #[error("A chave de API do {0} é inválida ou foi recusada.")]
     InvalidApiKey(SecretKind),
 
@@ -60,6 +64,7 @@ impl AppError {
             Self::MissingSecret(_) => "missing_secret",
             Self::SecretStore(_) => "secret_store",
             Self::InvalidInput(_) => "invalid_input",
+            Self::ShortcutInUse => "shortcut_in_use",
             Self::InvalidApiKey(_) => "invalid_api_key",
             Self::QuotaExceeded => "quota_exceeded",
             Self::RateLimited => "rate_limited",
@@ -124,6 +129,11 @@ mod tests {
                 AppError::InvalidInput("O texto está vazio.".into()),
                 "invalid_input",
                 "O texto está vazio.",
+            ),
+            (
+                AppError::ShortcutInUse,
+                "shortcut_in_use",
+                "Esse atalho já está em uso por outro app. Escolha outro.",
             ),
             (
                 AppError::InvalidApiKey(SecretKind::Deepl),
