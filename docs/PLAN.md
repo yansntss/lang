@@ -495,6 +495,18 @@ tag fora da `main`, pré-release, documentação de perda/vazamento da chave, De
   (`tauri signer sign` + `latest.json` manual); fica como melhoria.
 - Toolchain do Rust e `windows-latest` não são fixos (reprodutibilidade).
 
+## Popup redimensionável
+- O popup agora é `resizable` (mínimo 320×140; sem maximizar). O tamanho escolhido pelo usuário
+  fica em `settings.json` (`popupSize`, pixels lógicos) e é reaplicado a cada exibição, limitado a
+  90% da área útil do monitor. A gravação acontece ao ocultar, não a cada pixel arrastado.
+- Crescimento automático: o front mede o conteúdo (`useFitPopupHeight`) e chama
+  `fit_popup_height`; o Rust usa `max(altura escolhida, altura do conteúdo)` até o limite e puxa a
+  janela de volta para dentro do monitor. Só a altura cresce; a largura é do usuário.
+- Um `Resized` que o app acabou de pedir não conta como escolha do usuário (`popup_size.rs`,
+  `is_echo`), nem os que ocorrem nos 300 ms após a exibição.
+- Verificação manual pendente: confirmar no Windows que a borda de uma janela sem decoração
+  (`decorations: false`) pode ser arrastada, e o comportamento em monitores com DPI diferente.
+
 ## Riscos
 | Risco | Mitigação |
 |---|---|

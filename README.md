@@ -47,6 +47,7 @@ reiniciar** baixa o instalador do GitHub Releases, confere a assinatura e instal
 | Traduzir um trecho de outro app | Selecione o texto e aperte o atalho |
 | Copiar a tradução | **Enter** (também grava no histórico) |
 | Fechar | **Esc**, ou clique fora |
+| Redimensionar | Arraste as bordas da caixa. O tamanho é lembrado, e a caixa cresce sozinha para caber a tradução e a explicação |
 | Entender a tradução | Botão **Explicar** (precisa da chave da Anthropic) |
 | Histórico, configurações, sair | Menu do ícone da bandeja |
 

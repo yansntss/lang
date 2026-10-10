@@ -51,6 +51,7 @@ installer from GitHub Releases, verifies its signature and installs over the cur
 | Translate text from another app | Select the text and press the shortcut |
 | Copy the translation | **Enter** (also saves it to the history) |
 | Close | **Esc**, or click outside |
+| Resize | Drag the edges of the box. The size is remembered, and the box grows by itself to fit the translation and the explanation |
 | Understand the translation | **Explain** button (needs the Anthropic key) |
 | History, settings, quit | Tray icon menu |
 
