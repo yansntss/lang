@@ -56,6 +56,7 @@ pub fn run() -> tauri::Result<()> {
             commands::history::next_review,
             commands::history::mark_reviewed,
             commands::window::hide_popup,
+            commands::window::fit_popup_height,
             commands::secrets::set_secret,
             commands::secrets::has_secret,
             commands::secrets::delete_secret,

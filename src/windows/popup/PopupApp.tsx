@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useExplain } from "../../hooks/useExplain";
+import { useFitPopupHeight } from "../../hooks/useFitPopupHeight";
 import { useHasSecret } from "../../hooks/useHasSecret";
 import { usePopupLifecycle } from "../../hooks/usePopupLifecycle";
 import { useTheme } from "../../hooks/useTheme";
@@ -15,6 +16,9 @@ export default function PopupApp() {
   const [text, setText] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const popupRef = useRef<HTMLElement>(null);
+  const resultRef = useRef<HTMLElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const lastRecorded = useRef<string | null>(null);
   // Texto capturado que o usuário pediu para só traduzir depois do Enter (configurações).
   const [held, setHeld] = useState(false);
@@ -23,6 +27,7 @@ export default function PopupApp() {
   const cancelExplanation = explanation.cancel;
   const canExplain = useHasSecret("anthropic");
   useTheme();
+  useFitPopupHeight(popupRef, resultRef, contentRef);
 
   // Texto capturado da seleção do usuário (se houver) substitui o que estava no campo, e a
   // tradução começa sozinha pelo mesmo caminho da digitação, a menos que o usuário tenha
@@ -124,7 +129,7 @@ export default function PopupApp() {
   };
 
   return (
-    <main className="popup">
+    <main ref={popupRef} className="popup">
       <textarea
         ref={inputRef}
         className="popup__input"
@@ -141,35 +146,37 @@ export default function PopupApp() {
         }}
         onKeyDown={handleKeyDown}
       />
-      <section className="popup__result" aria-live="polite">
-        {held ? (
-          <p className="popup__hint">Enter traduz · Esc fecha</p>
-        ) : (
-          <TranslationResult state={result} />
-        )}
-        {currentTranslation && (
-          <div className="popup__explain">
-            <button
-              type="button"
-              className="popup__explain-button"
-              disabled={!canExplain || explanation.state.status === "streaming"}
-              onClick={explainTranslation}
-            >
-              Explicar
-            </button>
-            {!canExplain && (
-              <p className="popup__hint">
-                Configure a chave da Anthropic em Configurações para usar o Explicar.
-              </p>
-            )}
-          </div>
-        )}
-        <ExplainPanel state={explanation.state} />
-        {actionError && (
-          <p role="alert" className="popup__error">
-            {actionError}
-          </p>
-        )}
+      <section ref={resultRef} className="popup__result" aria-live="polite">
+        <div ref={contentRef} className="popup__content">
+          {held ? (
+            <p className="popup__hint">Enter traduz · Esc fecha</p>
+          ) : (
+            <TranslationResult state={result} />
+          )}
+          {currentTranslation && (
+            <div className="popup__explain">
+              <button
+                type="button"
+                className="popup__explain-button"
+                disabled={!canExplain || explanation.state.status === "streaming"}
+                onClick={explainTranslation}
+              >
+                Explicar
+              </button>
+              {!canExplain && (
+                <p className="popup__hint">
+                  Configure a chave da Anthropic em Configurações para usar o Explicar.
+                </p>
+              )}
+            </div>
+          )}
+          <ExplainPanel state={explanation.state} />
+          {actionError && (
+            <p role="alert" className="popup__error">
+              {actionError}
+            </p>
+          )}
+        </div>
       </section>
     </main>
   );

@@ -131,6 +131,14 @@ impl From<PreferencesUpdate> for Preferences {
     }
 }
 
+/// Tamanho do popup em pixels lógicos (independente da escala do monitor).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PopupSize {
+    pub width: u32,
+    pub height: u32,
+}
+
 /// Tudo o que é persistido. O atalho fica à parte das preferências porque trocá-lo mexe no
 /// sistema (`set_shortcut`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -139,6 +147,9 @@ pub struct Settings {
     pub shortcut: String,
     #[serde(flatten)]
     pub preferences: Preferences,
+    /// Último tamanho que o usuário deu ao popup; ausente até ele redimensionar uma vez.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub popup_size: Option<PopupSize>,
 }
 
 impl Default for Settings {
@@ -146,6 +157,7 @@ impl Default for Settings {
         Self {
             shortcut: DEFAULT_SHORTCUT.to_owned(),
             preferences: Preferences::default(),
+            popup_size: None,
         }
     }
 }
@@ -199,6 +211,31 @@ mod tests {
                 "autoTranslateSelection": true
             })
         );
+    }
+
+    #[test]
+    fn the_popup_size_is_only_written_once_the_user_has_chosen_one() {
+        let chosen = Settings {
+            popup_size: Some(PopupSize {
+                width: 500,
+                height: 320,
+            }),
+            ..Settings::default()
+        };
+
+        let json = serde_json::to_value(chosen).unwrap();
+
+        assert_eq!(
+            json["popupSize"],
+            serde_json::json!({"width": 500, "height": 320})
+        );
+    }
+
+    #[test]
+    fn a_file_without_the_popup_size_still_loads() {
+        let parsed = serde_json::from_str::<Settings>(r#"{"shortcut":"Ctrl+Alt+T"}"#).unwrap();
+
+        assert_eq!(parsed.popup_size, None);
     }
 
     #[test]

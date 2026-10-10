@@ -13,6 +13,7 @@
     "allow-has-secret",
     "allow-record-history",
     "allow-get-settings",
-    "allow-hide-popup"
+    "allow-hide-popup",
+    "allow-fit-popup-height"
   ]
 }

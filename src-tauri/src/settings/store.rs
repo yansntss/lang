@@ -3,7 +3,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{PoisonError, RwLock};
 
-use super::{Preferences, Settings};
+use super::{PopupSize, Preferences, Settings};
 use crate::error::AppError;
 
 /// Configurações em memória, espelhadas em um JSON no disco. A gravação é atômica (arquivo
@@ -58,6 +58,10 @@ impl SettingsStore {
 
     pub fn update_shortcut(&self, shortcut: &str) -> Result<Settings, AppError> {
         self.update(|settings| settings.shortcut = shortcut.to_owned())
+    }
+
+    pub fn update_popup_size(&self, size: PopupSize) -> Result<Settings, AppError> {
+        self.update(|settings| settings.popup_size = Some(size))
     }
 
     fn update(&self, change: impl FnOnce(&mut Settings)) -> Result<Settings, AppError> {
@@ -149,6 +153,26 @@ mod tests {
             .unwrap();
 
         assert_eq!(SettingsStore::load(&path).get().shortcut, "Ctrl+Shift+J");
+    }
+
+    #[test]
+    fn a_saved_popup_size_survives_a_restart_and_preference_updates() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = path_in(&dir);
+        let size = PopupSize {
+            width: 520,
+            height: 340,
+        };
+        let store = SettingsStore::load(&path);
+        store.update_popup_size(size).unwrap();
+        store
+            .update_preferences(Preferences {
+                theme: Theme::Dark,
+                ..Preferences::default()
+            })
+            .unwrap();
+
+        assert_eq!(SettingsStore::load(&path).get().popup_size, Some(size));
     }
 
     #[test]

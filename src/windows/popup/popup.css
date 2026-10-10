@@ -31,6 +31,11 @@
   overflow-y: auto;
 }
 
+/* `flow-root` contém as margens dos filhos, para a altura medida incluí-las. */
+.popup__content {
+  display: flow-root;
+}
+
 .popup__translation {
   margin: 0;
   font-size: 1.1em;

@@ -1,14 +1,22 @@
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow, Window, WindowEvent};
+use tauri::{
+    AppHandle, Emitter, LogicalSize, Manager, Monitor, PhysicalPosition, PhysicalSize,
+    WebviewWindow, Window, WindowEvent,
+};
 
 use super::placement::{
-    place_near_cursor, should_hide_on_blur, should_hide_unfocused, Point, Rect, Size, BLUR_GRACE,
+    clamp_into_area, place_near_cursor, should_hide_on_blur, should_hide_unfocused, Point, Rect,
+    Size, BLUR_GRACE,
+};
+use super::popup_size::{
+    clamp_size, fit_height, is_echo, max_size, preferred_after_user_resize, same_size, DEFAULT_SIZE,
 };
 use super::window_error;
 use crate::error::AppError;
+use crate::settings::PopupSize;
 use crate::state::AppState;
 
 pub const POPUP_LABEL: &str = "popup";
@@ -24,11 +32,27 @@ struct ResetPayload<'a> {
     auto_translate: bool,
 }
 const CURSOR_OFFSET_LOGICAL: f64 = 12.0;
+/// Logo depois de exibir, o app mexe no tamanho e na posição da janela; esses `Resized`
+/// não são o usuário arrastando as bordas.
+const SHOW_SETTLE: Duration = Duration::from_millis(300);
 
-/// Instante da última exibição, usado para ignorar blurs transitórios (ver `BLUR_GRACE`).
+/// Tamanhos do popup em pixels lógicos.
+#[derive(Default)]
+struct SizeState {
+    /// O que o usuário escolheu; `None` até ser lido das configurações.
+    preferred: Option<PopupSize>,
+    /// O último tamanho que o próprio app pediu à janela (exibição ou crescimento).
+    requested: Option<PopupSize>,
+    /// O usuário mudou o tamanho desde a última gravação.
+    dirty: bool,
+}
+
+/// Instante da última exibição, usado para ignorar blurs transitórios (ver `BLUR_GRACE`), e o
+/// tamanho do popup.
 #[derive(Default)]
 pub struct PopupState {
     shown_at: Mutex<Option<Instant>>,
+    size: Mutex<SizeState>,
 }
 
 impl PopupState {
@@ -41,6 +65,17 @@ impl PopupState {
     /// Com o lock envenenado devolve `None`, e o popup passa a ocultar em qualquer blur.
     fn shown_at(&self) -> Option<Instant> {
         self.shown_at.lock().ok().and_then(|shown_at| *shown_at)
+    }
+
+    fn just_shown(&self) -> bool {
+        self.shown_at()
+            .is_some_and(|shown| shown.elapsed() < SHOW_SETTLE)
+    }
+
+    /// O estado de tamanho só guarda números: um lock envenenado continua utilizável.
+    fn with_size<R>(&self, change: impl FnOnce(&mut SizeState) -> R) -> R {
+        let mut size = self.size.lock().unwrap_or_else(PoisonError::into_inner);
+        change(&mut size)
     }
 }
 
@@ -70,9 +105,12 @@ pub fn show_near_cursor(app: &AppHandle, prefill: Option<&str>) -> Result<(), Ap
         Some(monitor) => Some(monitor),
         None => app.primary_monitor().map_err(window_error)?,
     };
+    app.state::<PopupState>().mark_shown();
     if let Some(monitor) = monitor {
+        // Sempre volta ao tamanho escolhido: o crescimento pelo conteúdo vale só para a
+        // tradução que o causou.
+        request_preferred_size(&window, &monitor)?;
         let size = window.outer_size().map_err(window_error)?;
-        let work_area = monitor.work_area();
         let placed = place_near_cursor(
             Point {
                 x: round_to_i32(cursor.x),
@@ -82,16 +120,7 @@ pub fn show_near_cursor(app: &AppHandle, prefill: Option<&str>) -> Result<(), Ap
                 width: size.width,
                 height: size.height,
             },
-            Rect {
-                origin: Point {
-                    x: work_area.position.x,
-                    y: work_area.position.y,
-                },
-                size: Size {
-                    width: work_area.size.width,
-                    height: work_area.size.height,
-                },
-            },
+            work_rect(&monitor),
             round_to_i32(CURSOR_OFFSET_LOGICAL * monitor.scale_factor()),
         );
         window
@@ -99,7 +128,6 @@ pub fn show_near_cursor(app: &AppHandle, prefill: Option<&str>) -> Result<(), Ap
             .map_err(window_error)?;
     }
 
-    app.state::<PopupState>().mark_shown();
     // Sem o estado ainda (uma segunda instância muito cedo), mantém o comportamento de fábrica.
     let auto_translate = app
         .try_state::<AppState>()
@@ -119,6 +147,168 @@ pub fn show_near_cursor(app: &AppHandle, prefill: Option<&str>) -> Result<(), Ap
     focus_result
 }
 
+/// Faz o popup crescer (ou voltar ao tamanho escolhido) para caber `content_height` pixels
+/// lógicos de conteúdo, sem passar do monitor. Só a altura muda: a largura é do usuário.
+pub fn fit_to_content(window: &WebviewWindow, content_height: f64) -> Result<(), AppError> {
+    if !content_height.is_finite() || content_height <= 0.0 {
+        return Err(AppError::Window("altura do conteúdo inválida".into()));
+    }
+    let Some(monitor) = window.current_monitor().map_err(window_error)? else {
+        return Ok(());
+    };
+    let scale = window.scale_factor().map_err(window_error)?;
+    let max = max_size(work_area_logical(&monitor));
+    let current = logical_size(window.inner_size().map_err(window_error)?, scale);
+    let height = fit_height(
+        preferred_size(window.app_handle()).height,
+        content_height.min(f64::from(max.height)).ceil() as u32,
+        max.height,
+    );
+    let next = PopupSize {
+        width: current.width,
+        height,
+    };
+    if same_size(current, next) {
+        return Ok(());
+    }
+
+    request_size(window, next)?;
+    keep_inside_work_area(window, &monitor)
+}
+
+/// O tamanho que o usuário escolheu, ou o de fábrica.
+fn preferred_size(app: &AppHandle) -> PopupSize {
+    let stored = app
+        .try_state::<AppState>()
+        .map(|state| state.settings.get().popup_size);
+    app.state::<PopupState>().with_size(|size| {
+        if let Some(preferred) = size.preferred {
+            return preferred;
+        }
+        // Sem o estado ainda, usa o de fábrica sem fixá-lo: a próxima leitura tenta de novo.
+        let Some(stored) = stored else {
+            return DEFAULT_SIZE;
+        };
+        let preferred = stored.unwrap_or(DEFAULT_SIZE);
+        size.preferred = Some(preferred);
+        preferred
+    })
+}
+
+/// Dá ao popup o tamanho escolhido pelo usuário, limitado ao monitor onde ele vai aparecer.
+fn request_preferred_size(window: &WebviewWindow, monitor: &Monitor) -> Result<(), AppError> {
+    let size = clamp_size(
+        preferred_size(window.app_handle()),
+        max_size(work_area_logical(monitor)),
+    );
+    request_size(window, size)
+}
+
+fn request_size(window: &WebviewWindow, size: PopupSize) -> Result<(), AppError> {
+    window
+        .app_handle()
+        .state::<PopupState>()
+        .with_size(|state| state.requested = Some(size));
+    window
+        .set_size(LogicalSize::new(
+            f64::from(size.width),
+            f64::from(size.height),
+        ))
+        .map_err(window_error)
+}
+
+/// Depois de crescer, a janela pode passar da borda do monitor: puxa-a de volta.
+fn keep_inside_work_area(window: &WebviewWindow, monitor: &Monitor) -> Result<(), AppError> {
+    let position = window.outer_position().map_err(window_error)?;
+    let size = window.outer_size().map_err(window_error)?;
+    let current = Point {
+        x: position.x,
+        y: position.y,
+    };
+    let kept = clamp_into_area(
+        current,
+        Size {
+            width: size.width,
+            height: size.height,
+        },
+        work_rect(monitor),
+    );
+    if kept == current {
+        return Ok(());
+    }
+    window
+        .set_position(PhysicalPosition::new(kept.x, kept.y))
+        .map_err(window_error)
+}
+
+/// Um `Resized` que não foi pedido pelo app é o usuário arrastando as bordas: guarda o tamanho
+/// (a gravação em disco só acontece ao ocultar, não a cada pixel arrastado).
+fn remember_user_resize(window: &Window, resized: PhysicalSize<u32>) {
+    if resized.width == 0 || resized.height == 0 {
+        return;
+    }
+    let state = window.state::<PopupState>();
+    if !window.is_visible().unwrap_or(false) || state.just_shown() {
+        return;
+    }
+    let Ok(scale) = window.scale_factor() else {
+        return;
+    };
+    let resized = logical_size(resized, scale);
+    let previous = preferred_size(window.app_handle());
+    state.with_size(|size| {
+        if is_echo(resized, size.requested) {
+            return;
+        }
+        size.preferred = Some(preferred_after_user_resize(
+            previous,
+            size.requested,
+            resized,
+        ));
+        size.dirty = true;
+    });
+}
+
+/// Grava o tamanho escolhido pelo usuário, se mudou. Chamada ao ocultar o popup.
+pub fn save_size_if_changed(app: &AppHandle) {
+    let state = app.state::<PopupState>();
+    let Some(preferred) = state.with_size(|size| size.preferred.filter(|_| size.dirty)) else {
+        return;
+    };
+    let Some(app_state) = app.try_state::<AppState>() else {
+        return;
+    };
+    match app_state.settings.update_popup_size(preferred) {
+        Ok(_) => state.with_size(|size| size.dirty = false),
+        Err(error) => log::warn!("não foi possível lembrar o tamanho do popup: {error}"),
+    }
+}
+
+fn work_rect(monitor: &Monitor) -> Rect {
+    let work_area = monitor.work_area();
+    Rect {
+        origin: Point {
+            x: work_area.position.x,
+            y: work_area.position.y,
+        },
+        size: Size {
+            width: work_area.size.width,
+            height: work_area.size.height,
+        },
+    }
+}
+
+fn work_area_logical(monitor: &Monitor) -> PopupSize {
+    logical_size(monitor.work_area().size, monitor.scale_factor())
+}
+
+fn logical_size(physical: PhysicalSize<u32>, scale: f64) -> PopupSize {
+    PopupSize {
+        width: (f64::from(physical.width) / scale).round() as u32,
+        height: (f64::from(physical.height) / scale).round() as u32,
+    }
+}
+
 /// Um blur dentro de `BLUR_GRACE` é ignorado e nunca reemitido. Se o Windows recusar o foco,
 /// o popup (always-on-top) ficaria preso na tela; esta verificação final o oculta.
 fn hide_if_still_unfocused(window: WebviewWindow) {
@@ -129,6 +319,7 @@ fn hide_if_still_unfocused(window: WebviewWindow) {
         match window.is_focused() {
             Ok(is_focused) => {
                 if should_hide_unfocused(is_focused, shown_at, Instant::now()) {
+                    save_size_if_changed(window.app_handle());
                     if let Err(error) = window.hide() {
                         log::warn!("não foi possível ocultar o popup sem foco: {error}");
                     }
@@ -152,6 +343,7 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
                 hide(window);
             }
         }
+        WindowEvent::Resized(size) => remember_user_resize(window, *size),
         WindowEvent::CloseRequested { api, .. } => {
             api.prevent_close();
             hide(window);
@@ -161,6 +353,7 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
 }
 
 fn hide(window: &Window) {
+    save_size_if_changed(window.app_handle());
     if let Err(error) = window.hide() {
         log::warn!("não foi possível ocultar o popup: {error}");
     }
@@ -194,5 +387,24 @@ mod tests {
         .unwrap();
 
         assert_eq!(json, r#"{"prefill":null,"autoTranslate":false}"#);
+    }
+
+    #[test]
+    fn a_physical_size_is_converted_to_logical_pixels_by_the_scale() {
+        let logical = logical_size(
+            PhysicalSize {
+                width: 630,
+                height: 300,
+            },
+            1.5,
+        );
+
+        assert_eq!(
+            logical,
+            PopupSize {
+                width: 420,
+                height: 200
+            }
+        );
     }
 }

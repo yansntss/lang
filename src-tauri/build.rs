@@ -23,6 +23,7 @@ const APP_COMMANDS: &[&str] = &[
     "check_update",
     "install_update",
     "hide_popup",
+    "fit_popup_height",
     "set_secret",
     "has_secret",
     "delete_secret",

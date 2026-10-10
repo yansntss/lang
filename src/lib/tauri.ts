@@ -101,6 +101,11 @@ export function hidePopup(): Promise<void> {
   return invoke<void>("hide_popup");
 }
 
+/** Pede à janela do popup a altura (em pixels) que o conteúdo precisa; ela cresce até caber. */
+export function fitPopupHeight(contentHeight: number): Promise<void> {
+  return invoke<void>("fit_popup_height", { contentHeight });
+}
+
 export function setSecret(kind: SecretKind, value: string): Promise<void> {
   return invoke<void>("set_secret", { kind, value });
 }

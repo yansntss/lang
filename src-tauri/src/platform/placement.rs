@@ -44,18 +44,41 @@ pub fn place_near_cursor(cursor: Point, window: Size, area: Rect, offset: i32) -
     }
 }
 
+/// Mantém a janela inteira dentro da área; se for maior que ela, fica no canto de origem.
+/// Usada quando a janela cresce e poderia passar da borda do monitor.
+pub fn clamp_into_area(origin: Point, window: Size, area: Rect) -> Point {
+    Point {
+        x: clamp_axis(
+            i64::from(origin.x),
+            window.width,
+            area.origin.x,
+            area.size.width,
+        ),
+        y: clamp_axis(
+            i64::from(origin.y),
+            window.height,
+            area.origin.y,
+            area.size.height,
+        ),
+    }
+}
+
 fn place_axis(cursor: i32, window_len: u32, area_start: i32, area_len: u32, offset: i32) -> i32 {
-    let window_len = i64::from(window_len);
     let area_end = i64::from(area_start) + i64::from(area_len);
     let after_cursor = i64::from(cursor) + i64::from(offset);
 
-    let start = if after_cursor + window_len > area_end {
-        i64::from(cursor) - i64::from(offset) - window_len
+    let start = if after_cursor + i64::from(window_len) > area_end {
+        i64::from(cursor) - i64::from(offset) - i64::from(window_len)
     } else {
         after_cursor
     };
 
-    let latest_start = (area_end - window_len).max(i64::from(area_start));
+    clamp_axis(start, window_len, area_start, area_len)
+}
+
+fn clamp_axis(start: i64, window_len: u32, area_start: i32, area_len: u32) -> i32 {
+    let area_end = i64::from(area_start) + i64::from(area_len);
+    let latest_start = (area_end - i64::from(window_len)).max(i64::from(area_start));
     let clamped = start.clamp(i64::from(area_start), latest_start);
 
     i32::try_from(clamped).unwrap_or(area_start)
@@ -162,6 +185,34 @@ mod tests {
         let placed = place_near_cursor(at(100, -50), WINDOW, above, OFFSET);
 
         assert_eq!(placed, at(112, -50 - OFFSET - 200));
+    }
+
+    #[test]
+    fn a_window_that_grew_past_the_bottom_edge_is_pulled_back_up() {
+        let grown = Size {
+            width: 420,
+            height: 600,
+        };
+
+        let moved = clamp_into_area(at(112, 700), grown, full_hd());
+
+        assert_eq!(moved, at(112, 480));
+    }
+
+    #[test]
+    fn a_window_already_inside_the_area_stays_where_it_is() {
+        let moved = clamp_into_area(at(112, 112), WINDOW, full_hd());
+
+        assert_eq!(moved, at(112, 112));
+    }
+
+    #[test]
+    fn a_window_larger_than_the_area_is_pinned_to_its_origin() {
+        let tiny = area(10, 20, 300, 100);
+
+        let moved = clamp_into_area(at(50, 50), WINDOW, tiny);
+
+        assert_eq!(moved, at(10, 20));
     }
 
     #[test]
