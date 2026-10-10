@@ -515,6 +515,10 @@ tag fora da `main`, pré-release, documentação de perda/vazamento da chave, De
   atalho com o popup visível só foca e preenche (sem reposicionar), e o Enter copia sem fechar.
   Ocultar (Esc) solta. O estado vive no Rust (`PopupState.pinned`) e volta ao front pelo
   `popup://reset`. Não persiste entre execuções.
+- O arrasto nativo (mover ou redimensionar) tira o foco do conteúdo web, e o popup se ocultava
+  como num clique fora (só funcionava fixado). `PopupState.interacting` ignora esse blur até o
+  botão do mouse ser solto (`GetAsyncKeyState`, no mínimo 250 ms, teto de 60 s) e depois devolve
+  o foco ao popup.
 - Verificação manual pendente: alças, arrasto e fixar no Windows real, e monitores com DPI
   diferente.
 

@@ -58,11 +58,18 @@ pub struct PopupState {
     size: Mutex<SizeState>,
     /// Fixado: não some ao perder o foco. Vale só até o popup ser ocultado.
     pinned: AtomicBool,
+    /// O usuário está movendo ou redimensionando a janela. O arrasto nativo do Windows tira o
+    /// foco do conteúdo web, e esse blur não é um clique fora.
+    interacting: AtomicBool,
 }
 
 impl PopupState {
     fn is_pinned(&self) -> bool {
         self.pinned.load(Ordering::Relaxed)
+    }
+
+    fn is_interacting(&self) -> bool {
+        self.interacting.load(Ordering::Relaxed)
     }
 
     fn mark_shown(&self) {
@@ -175,6 +182,14 @@ pub fn set_pinned(app: &AppHandle, pinned: bool) {
     app.state::<PopupState>()
         .pinned
         .store(pinned, Ordering::Relaxed);
+}
+
+/// Marca o início e o fim de um arrasto (mover ou redimensionar) feito pelo usuário. Durante o
+/// arrasto, perder o foco não oculta o popup.
+pub fn set_interacting(app: &AppHandle, interacting: bool) {
+    app.state::<PopupState>()
+        .interacting
+        .store(interacting, Ordering::Relaxed);
 }
 
 /// Antes de ocultar: grava o tamanho escolhido e solta o popup, que volta a abrir perto do
@@ -381,7 +396,10 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
     match event {
         WindowEvent::Focused(false) => {
             let state = window.state::<PopupState>();
-            if !state.is_pinned() && should_hide_on_blur(state.shown_at(), Instant::now()) {
+            if !state.is_pinned()
+                && !state.is_interacting()
+                && should_hide_on_blur(state.shown_at(), Instant::now())
+            {
                 hide(window);
             }
         }
