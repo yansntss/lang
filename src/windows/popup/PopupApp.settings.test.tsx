@@ -23,6 +23,7 @@ const copyToClipboard = vi.mocked(tauri.copyToClipboard);
 const translation: Translation = { text: "olá", sourceLang: "EN", targetLang: "PT-BR" };
 const SETTINGS: SettingsView = {
   shortcut: "Ctrl+Alt+T",
+  ocrShortcut: "Ctrl+Alt+Y",
   autostart: false,
   appVersion: "0.1.0",
   theme: "system",

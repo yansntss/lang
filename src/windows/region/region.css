@@ -1,0 +1,68 @@
+/* A janela cobre o monitor inteiro com a tela congelada. Fora da seleção, tudo fica escurecido;
+   dentro dela, a imagem aparece como está, para o usuário ver o texto que está pegando. */
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+  --region-shade: rgb(0 0 0 / 55%);
+  --region-accent: #6c9bff;
+  --region-text: #ffffff;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #000000;
+}
+
+.region {
+  position: fixed;
+  inset: 0;
+  cursor: crosshair;
+  user-select: none;
+  touch-action: none;
+}
+
+.region__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.region__shade {
+  position: absolute;
+  inset: 0;
+  background: var(--region-shade);
+}
+
+.region__selection {
+  position: absolute;
+  outline: 2px solid var(--region-accent);
+  box-shadow: 0 0 0 100vmax var(--region-shade);
+}
+
+.region__hint,
+.region__message {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 6px 14px;
+  border-radius: 6px;
+  color: var(--region-text);
+  background: rgb(0 0 0 / 75%);
+  pointer-events: none;
+}
+
+.region__hint {
+  top: 24px;
+}
+
+.region__message {
+  top: 64px;
+  outline: 1px solid #ff7b72;
+}

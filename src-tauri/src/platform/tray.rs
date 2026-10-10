@@ -8,6 +8,7 @@ use super::history_window;
 use super::log_failure;
 use super::popup_window::show_near_cursor;
 use super::settings_window;
+use super::shortcut;
 
 const TRAY_ID: &str = "main";
 const MENU_OPEN: &str = "open";
@@ -17,21 +18,22 @@ const MENU_QUIT: &str = "quit";
 
 pub const TOOLTIP: &str = "Lang";
 
-/// Texto da dica da bandeja: avisa quando o atalho não pôde ser registrado.
-pub fn tooltip_for(shortcut_label: &str, shortcut_available: bool) -> String {
-    if shortcut_available {
-        TOOLTIP.to_owned()
-    } else {
-        format!("{TOOLTIP} — atalho {shortcut_label} indisponível")
+/// Texto da dica da bandeja: avisa quais atalhos não puderam ser registrados.
+pub fn tooltip_for(unavailable: &[String]) -> String {
+    match unavailable {
+        [] => TOOLTIP.to_owned(),
+        [only] => format!("{TOOLTIP} — atalho {only} indisponível"),
+        many => format!("{TOOLTIP} — atalhos {} indisponíveis", many.join(" e ")),
     }
 }
 
-/// Atualiza a dica da bandeja depois de trocar o atalho.
-pub fn update_tooltip(app: &AppHandle, shortcut_label: &str, shortcut_available: bool) {
+/// Atualiza a dica da bandeja com os atalhos que estão sem registro no momento.
+pub fn update_tooltip(app: &AppHandle) {
     let Some(tray) = app.tray_by_id(TRAY_ID) else {
         return;
     };
-    if let Err(error) = tray.set_tooltip(Some(tooltip_for(shortcut_label, shortcut_available))) {
+    let tooltip = tooltip_for(&shortcut::unavailable_labels());
+    if let Err(error) = tray.set_tooltip(Some(tooltip)) {
         log::warn!("não foi possível atualizar a dica da bandeja: {error}");
     }
 }
@@ -99,11 +101,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_tooltip_only_warns_when_the_shortcut_is_unavailable() {
-        assert_eq!(tooltip_for("Ctrl+Alt+T", true), "Lang");
+    fn the_tooltip_only_warns_about_shortcuts_that_are_unavailable() {
+        assert_eq!(tooltip_for(&[]), "Lang");
         assert_eq!(
-            tooltip_for("Ctrl+Alt+T", false),
+            tooltip_for(&["Ctrl+Alt+T".into()]),
             "Lang — atalho Ctrl+Alt+T indisponível"
+        );
+        assert_eq!(
+            tooltip_for(&["Ctrl+Alt+T".into(), "Ctrl+Alt+Y".into()]),
+            "Lang — atalhos Ctrl+Alt+T e Ctrl+Alt+Y indisponíveis"
         );
     }
 

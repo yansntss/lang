@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { acceleratorFromEvent, isModifierKey } from "../../lib/accelerator";
 import { errorMessage, setShortcut } from "../../lib/tauri";
-import type { SettingsView } from "../../lib/types";
+import type { SettingsView, ShortcutSlot } from "../../lib/types";
 
 interface Feedback {
   kind: "success" | "error";
@@ -9,6 +9,11 @@ interface Feedback {
 }
 
 interface ShortcutSectionProps {
+  /** Qual atalho esta seção troca. */
+  slot: ShortcutSlot;
+  title: string;
+  /** Para que serve o atalho, mostrado acima do atual. */
+  description?: string;
   shortcut: string;
   onChanged: (view: SettingsView) => void;
 }
@@ -17,11 +22,22 @@ const UNSUPPORTED_KEY = "Use uma letra, um número ou F1 a F12 como tecla do ata
 const NEEDS_MODIFIER = "Use Ctrl, Alt ou Win junto da tecla do atalho.";
 const NAVIGATION_KEYS = ["Tab", "Enter", "NumpadEnter", "Space"];
 
+/** O texto salvo para `slot` no que o backend devolveu. */
+function shortcutOf(view: SettingsView, slot: ShortcutSlot): string {
+  return slot === "ocr" ? view.ocrShortcut : view.shortcut;
+}
+
 /**
- * Mostra o atalho global e o troca por gravação: o usuário aperta a nova combinação. O backend
+ * Mostra um atalho global e o troca por gravação: o usuário aperta a nova combinação. O backend
  * valida de novo e, se o sistema recusar o atalho, o atual continua valendo.
  */
-export default function ShortcutSection({ shortcut, onChanged }: ShortcutSectionProps) {
+export default function ShortcutSection({
+  slot,
+  title,
+  description,
+  shortcut,
+  onChanged,
+}: ShortcutSectionProps) {
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -31,16 +47,16 @@ export default function ShortcutSection({ shortcut, onChanged }: ShortcutSection
       setBusy(true);
       setFeedback(null);
       try {
-        const view = await setShortcut(accelerator);
+        const view = await setShortcut(accelerator, slot);
         onChanged(view);
-        setFeedback({ kind: "success", text: `Atalho alterado para ${view.shortcut}.` });
+        setFeedback({ kind: "success", text: `Atalho alterado para ${shortcutOf(view, slot)}.` });
       } catch (error: unknown) {
         setFeedback({ kind: "error", text: errorMessage(error) });
       } finally {
         setBusy(false);
       }
     },
-    [onChanged],
+    [onChanged, slot],
   );
 
   useEffect(() => {
@@ -56,7 +72,9 @@ export default function ShortcutSection({ shortcut, onChanged }: ShortcutSection
         return;
       }
       event.preventDefault();
-      event.stopPropagation();
+      // Imediata: a outra seção de atalho também pode estar gravando, e a combinação vale
+      // só para uma delas.
+      event.stopImmediatePropagation();
       // Segurar a tecla repete o evento; só a primeira conta.
       if (event.repeat) {
         return;
@@ -85,8 +103,9 @@ export default function ShortcutSection({ shortcut, onChanged }: ShortcutSection
   }, [recording, apply]);
 
   return (
-    <section aria-labelledby="shortcut-title" className="settings__section">
-      <h2 id="shortcut-title">Atalho global</h2>
+    <section aria-labelledby={`shortcut-${slot}-title`} className="settings__section">
+      <h2 id={`shortcut-${slot}-title`}>{title}</h2>
+      {description && <p className="settings__hint">{description}</p>}
       <p className="settings__status">
         Atalho atual: <kbd>{shortcut}</kbd>
       </p>

@@ -48,6 +48,19 @@ pub enum AppError {
     #[error("Não foi possível capturar o texto selecionado.")]
     Capture(String),
 
+    #[error("Não foi possível capturar a tela.")]
+    ScreenCapture(String),
+
+    /// A captura veio toda preta: em geral, um jogo em tela cheia exclusiva.
+    #[error(
+        "A captura da tela veio preta. Em jogos, use o modo janela sem bordas (borderless) em \
+         vez da tela cheia exclusiva."
+    )]
+    BlankCapture,
+
+    #[error("Selecione uma área maior, que contenha o texto.")]
+    RegionEmpty,
+
     #[error("Não foi possível acessar o histórico.")]
     History(String),
 
@@ -73,6 +86,9 @@ impl AppError {
             Self::Clipboard(_) => "clipboard",
             Self::Window(_) => "window",
             Self::Capture(_) => "capture",
+            Self::ScreenCapture(_) => "screen_capture",
+            Self::BlankCapture => "blank_capture",
+            Self::RegionEmpty => "region_empty",
             Self::History(_) => "history",
             Self::Settings(_) => "settings",
             Self::Update(_) => "update",
@@ -155,6 +171,11 @@ mod tests {
                 "upstream",
                 "O serviço respondeu com erro (500).",
             ),
+            (
+                AppError::RegionEmpty,
+                "region_empty",
+                "Selecione uma área maior, que contenha o texto.",
+            ),
         ];
 
         for (error, code, message) in cases {
@@ -182,6 +203,11 @@ mod tests {
                 AppError::Capture("SendInput: acesso negado".into()),
                 "capture",
                 "Não foi possível capturar o texto selecionado.",
+            ),
+            (
+                AppError::ScreenCapture("BitBlt falhou: HWND 0x5".into()),
+                "screen_capture",
+                "Não foi possível capturar a tela.",
             ),
             (
                 AppError::History("no such table: history".into()),

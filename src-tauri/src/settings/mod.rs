@@ -11,6 +11,42 @@ use crate::services::translation::{TargetLang, TargetLangs};
 
 /// Atalho de fábrica; também o que vale quando o salvo é inválido.
 pub const DEFAULT_SHORTCUT: &str = "Ctrl+Alt+T";
+/// Atalho de fábrica da leitura de um trecho da tela (OCR).
+pub const DEFAULT_OCR_SHORTCUT: &str = "Ctrl+Alt+Y";
+
+/// Qual dos atalhos globais: o do tradutor ou o da leitura de tela.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ShortcutSlot {
+    Translate,
+    Ocr,
+}
+
+impl ShortcutSlot {
+    pub const ALL: [Self; 2] = [Self::Translate, Self::Ocr];
+
+    pub fn factory_default(self) -> &'static str {
+        match self {
+            Self::Translate => DEFAULT_SHORTCUT,
+            Self::Ocr => DEFAULT_OCR_SHORTCUT,
+        }
+    }
+
+    pub fn other(self) -> Self {
+        match self {
+            Self::Translate => Self::Ocr,
+            Self::Ocr => Self::Translate,
+        }
+    }
+
+    /// Nome mostrado ao usuário quando os dois atalhos colidem.
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::Translate => "abrir o tradutor",
+            Self::Ocr => "ler um trecho da tela",
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -145,6 +181,7 @@ pub struct PopupSize {
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     pub shortcut: String,
+    pub ocr_shortcut: String,
     #[serde(flatten)]
     pub preferences: Preferences,
     /// Último tamanho que o usuário deu ao popup; ausente até ele redimensionar uma vez.
@@ -156,8 +193,19 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             shortcut: DEFAULT_SHORTCUT.to_owned(),
+            ocr_shortcut: DEFAULT_OCR_SHORTCUT.to_owned(),
             preferences: Preferences::default(),
             popup_size: None,
+        }
+    }
+}
+
+impl Settings {
+    /// O atalho salvo para `slot`.
+    pub fn shortcut_for(&self, slot: ShortcutSlot) -> &str {
+        match slot {
+            ShortcutSlot::Translate => &self.shortcut,
+            ShortcutSlot::Ocr => &self.ocr_shortcut,
         }
     }
 }
@@ -203,6 +251,7 @@ mod tests {
             json,
             serde_json::json!({
                 "shortcut": "Ctrl+Alt+T",
+                "ocrShortcut": "Ctrl+Alt+Y",
                 "theme": "system",
                 "englishVariant": "EN-US",
                 "portugueseVariant": "PT-BR",
@@ -236,6 +285,35 @@ mod tests {
         let parsed = serde_json::from_str::<Settings>(r#"{"shortcut":"Ctrl+Alt+T"}"#).unwrap();
 
         assert_eq!(parsed.popup_size, None);
+    }
+
+    #[test]
+    fn a_file_from_before_the_ocr_shortcut_gets_the_factory_one() {
+        let parsed = serde_json::from_str::<Settings>(r#"{"shortcut":"Ctrl+Shift+J"}"#).unwrap();
+
+        assert_eq!(parsed.shortcut_for(ShortcutSlot::Translate), "Ctrl+Shift+J");
+        assert_eq!(parsed.shortcut_for(ShortcutSlot::Ocr), "Ctrl+Alt+Y");
+    }
+
+    #[test]
+    fn each_slot_has_its_own_factory_shortcut_and_knows_the_other() {
+        assert_eq!(ShortcutSlot::Translate.factory_default(), "Ctrl+Alt+T");
+        assert_eq!(ShortcutSlot::Ocr.factory_default(), "Ctrl+Alt+Y");
+        assert_eq!(ShortcutSlot::Translate.other(), ShortcutSlot::Ocr);
+        assert_eq!(ShortcutSlot::Ocr.other(), ShortcutSlot::Translate);
+    }
+
+    #[test]
+    fn slots_use_the_names_the_front_sends() {
+        assert_eq!(
+            serde_json::from_str::<ShortcutSlot>(r#""ocr""#).unwrap(),
+            ShortcutSlot::Ocr
+        );
+        assert_eq!(
+            serde_json::from_str::<ShortcutSlot>(r#""translate""#).unwrap(),
+            ShortcutSlot::Translate
+        );
+        assert!(serde_json::from_str::<ShortcutSlot>(r#""other""#).is_err());
     }
 
     #[test]

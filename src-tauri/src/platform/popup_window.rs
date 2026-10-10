@@ -15,7 +15,8 @@ use super::placement::{
 use super::popup_size::{
     clamp_size, fit_height, is_echo, max_size, preferred_after_user_resize, same_size, DEFAULT_SIZE,
 };
-use super::window_error;
+use super::region_geometry::{center_of, place_beside_region};
+use super::{monitor_at, window_error};
 use crate::error::AppError;
 use crate::settings::PopupSize;
 use crate::state::AppState;
@@ -25,14 +26,16 @@ pub const POPUP_LABEL: &str = "popup";
 pub const EVENT_RESET: &str = "popup://reset";
 
 /// Corpo do evento `popup://reset`. `prefill` é o texto capturado da seleção do usuário,
-/// `auto_translate` diz se ele deve ser traduzido sozinho ou só depois do Enter, e `pinned` se
-/// o popup continua fixado na tela.
+/// `auto_translate` diz se ele deve ser traduzido sozinho ou só depois do Enter, `pinned` se
+/// o popup continua fixado na tela, e `notice` um aviso a mostrar (por exemplo, a captura da
+/// tela falhou).
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ResetPayload<'a> {
     prefill: Option<&'a str>,
     auto_translate: bool,
     pinned: bool,
+    notice: Option<&'a str>,
 }
 const CURSOR_OFFSET_LOGICAL: f64 = 12.0;
 /// Logo depois de exibir, o app mexe no tamanho e na posição da janela; esses `Resized`
@@ -98,15 +101,31 @@ impl PopupState {
 /// Posiciona o popup perto do cursor (dentro do monitor onde ele está), exibe e dá foco.
 /// `prefill` é o texto capturado da seleção, entregue ao front junto do reset.
 pub fn show_near_cursor(app: &AppHandle, prefill: Option<&str>) -> Result<(), AppError> {
-    let window = app
-        .get_webview_window(POPUP_LABEL)
-        .ok_or_else(|| AppError::Window("janela do popup não encontrada".into()))?;
+    show_near_cursor_with(app, prefill, None)
+}
+
+/// Abre o popup perto do cursor só para mostrar um aviso (o campo fica vazio).
+pub fn show_notice(app: &AppHandle, notice: &str) -> Result<(), AppError> {
+    show_near_cursor_with(app, None, Some(notice))
+}
+
+fn popup_window(app: &AppHandle) -> Result<WebviewWindow, AppError> {
+    app.get_webview_window(POPUP_LABEL)
+        .ok_or_else(|| AppError::Window("janela do popup não encontrada".into()))
+}
+
+fn show_near_cursor_with(
+    app: &AppHandle,
+    prefill: Option<&str>,
+    notice: Option<&str>,
+) -> Result<(), AppError> {
+    let window = popup_window(app)?;
 
     // Atalho repetido (ou segurado) com o popup já em uso: não apaga o que o usuário digitou.
     if window.is_visible().map_err(window_error)? && window.is_focused().map_err(window_error)? {
-        if prefill.is_some() {
+        if prefill.is_some() || notice.is_some() {
             // Só o fato vai para o log, nunca o texto do usuário.
-            log::info!("popup já estava em uso; o texto capturado foi descartado");
+            log::info!("popup já estava em uso; o texto capturado ou o aviso foi descartado");
         }
         return Ok(());
     }
@@ -114,22 +133,22 @@ pub fn show_near_cursor(app: &AppHandle, prefill: Option<&str>) -> Result<(), Ap
     // Fixado e visível: fica onde o usuário o deixou, no tamanho em que está. Só recebe o
     // texto capturado (se houver; senão mantém o que estava no campo) e o foco.
     if window.is_visible().map_err(window_error)? && app.state::<PopupState>().is_pinned() {
-        if let Some(prefill) = prefill {
-            emit_reset(app, Some(prefill), true)?;
+        if prefill.is_some() || notice.is_some() {
+            emit_reset(app, prefill, true, notice)?;
         }
         return window.set_focus().map_err(window_error);
     }
 
     let cursor = app.cursor_position().map_err(window_error)?;
-    // Cursor fora de qualquer monitor (ex.: após desconectar um): usa o monitor primário,
-    // e `place_near_cursor` limita a janela a ele.
-    let monitor = match app
-        .monitor_from_point(cursor.x, cursor.y)
-        .map_err(window_error)?
-    {
-        Some(monitor) => Some(monitor),
-        None => app.primary_monitor().map_err(window_error)?,
-    };
+    // Cursor fora de qualquer monitor: `monitor_at` usa o primário, e `place_near_cursor`
+    // limita a janela a ele.
+    let monitor = monitor_at(
+        app,
+        Point {
+            x: round_to_i32(cursor.x),
+            y: round_to_i32(cursor.y),
+        },
+    )?;
     app.state::<PopupState>().mark_shown();
     if let Some(monitor) = monitor {
         // Sempre volta ao tamanho escolhido: o crescimento pelo conteúdo vale só para a
@@ -153,14 +172,54 @@ pub fn show_near_cursor(app: &AppHandle, prefill: Option<&str>) -> Result<(), Ap
             .map_err(window_error)?;
     }
 
-    emit_reset(app, prefill, false)?;
+    emit_reset(app, prefill, false, notice)?;
     window.show().map_err(window_error)?;
     let focus_result = window.set_focus().map_err(window_error);
     hide_if_still_unfocused(window);
     focus_result
 }
 
-fn emit_reset(app: &AppHandle, prefill: Option<&str>, pinned: bool) -> Result<(), AppError> {
+/// Abre o popup fixado ao lado de `region` (pixels físicos da tela), sem cobri-la: o texto
+/// lido da tela continua visível, e uma nova leitura da mesma região não pega o popup.
+pub fn show_beside_region(
+    app: &AppHandle,
+    region: Rect,
+    prefill: Option<&str>,
+) -> Result<(), AppError> {
+    let window = popup_window(app)?;
+    let monitor = monitor_at(app, center_of(region))?;
+
+    app.state::<PopupState>().mark_shown();
+    if let Some(monitor) = monitor {
+        request_preferred_size(&window, &monitor)?;
+        let size = window.outer_size().map_err(window_error)?;
+        let placed = place_beside_region(
+            region,
+            Size {
+                width: size.width,
+                height: size.height,
+            },
+            work_rect(&monitor),
+            round_to_i32(CURSOR_OFFSET_LOGICAL * monitor.scale_factor()),
+        );
+        window
+            .set_position(PhysicalPosition::new(placed.x, placed.y))
+            .map_err(window_error)?;
+    }
+
+    // Fixa só agora: se algo acima falhou, o popup não fica fixado sem ter aparecido.
+    set_pinned(app, true);
+    emit_reset(app, prefill, true, None)?;
+    window.show().map_err(window_error)?;
+    window.set_focus().map_err(window_error)
+}
+
+fn emit_reset(
+    app: &AppHandle,
+    prefill: Option<&str>,
+    pinned: bool,
+    notice: Option<&str>,
+) -> Result<(), AppError> {
     // Sem o estado ainda (uma segunda instância muito cedo), mantém o comportamento de fábrica.
     let auto_translate = app
         .try_state::<AppState>()
@@ -172,6 +231,7 @@ fn emit_reset(app: &AppHandle, prefill: Option<&str>, pinned: bool) -> Result<()
             prefill,
             auto_translate,
             pinned,
+            notice,
         },
     )
     .map_err(window_error)
@@ -433,12 +493,13 @@ mod tests {
             prefill: Some("olá mundo"),
             auto_translate: true,
             pinned: false,
+            notice: None,
         })
         .unwrap();
 
         assert_eq!(
             json,
-            r#"{"prefill":"olá mundo","autoTranslate":true,"pinned":false}"#
+            r#"{"prefill":"olá mundo","autoTranslate":true,"pinned":false,"notice":null}"#
         );
     }
 
@@ -448,12 +509,13 @@ mod tests {
             prefill: None,
             auto_translate: false,
             pinned: false,
+            notice: None,
         })
         .unwrap();
 
         assert_eq!(
             json,
-            r#"{"prefill":null,"autoTranslate":false,"pinned":false}"#
+            r#"{"prefill":null,"autoTranslate":false,"pinned":false,"notice":null}"#
         );
     }
 
@@ -463,10 +525,27 @@ mod tests {
             prefill: Some("hello"),
             auto_translate: true,
             pinned: true,
+            notice: None,
         })
         .unwrap();
 
         assert_eq!(json["pinned"], serde_json::json!(true));
+    }
+
+    #[test]
+    fn reset_payload_carries_a_notice_for_the_user() {
+        let json = serde_json::to_value(ResetPayload {
+            prefill: None,
+            auto_translate: true,
+            pinned: false,
+            notice: Some("A captura da tela veio preta."),
+        })
+        .unwrap();
+
+        assert_eq!(
+            json["notice"],
+            serde_json::json!("A captura da tela veio preta.")
+        );
     }
 
     #[test]

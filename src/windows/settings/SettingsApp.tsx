@@ -16,6 +16,10 @@ const ANTHROPIC_HINT =
   "Opcional: só o botão Explicar usa. A chave fica guardada no Gerenciador de Credenciais do " +
   "Windows e nunca é exibida de volta.";
 
+const OCR_SHORTCUT_HINT =
+  "Escurece a tela para você arrastar um retângulo sobre o texto (legendas de jogos, imagens) " +
+  "e traduz o que estiver dentro dele.";
+
 export default function SettingsApp() {
   const [settings, setSettings] = useState<SettingsView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -53,7 +57,19 @@ export default function SettingsApp() {
       <SecretSection kind="anthropic" title="Anthropic" article="da" hint={ANTHROPIC_HINT} />
       {settings ? (
         <>
-          <ShortcutSection shortcut={settings.shortcut} onChanged={handleChanged} />
+          <ShortcutSection
+            slot="translate"
+            title="Atalho do tradutor"
+            shortcut={settings.shortcut}
+            onChanged={handleChanged}
+          />
+          <ShortcutSection
+            slot="ocr"
+            title="Atalho da leitura de tela"
+            description={OCR_SHORTCUT_HINT}
+            shortcut={settings.ocrShortcut}
+            onChanged={handleChanged}
+          />
           <GeneralSection settings={settings} onChanged={handleChanged} />
           <UpdateSection version={settings.appVersion} />
         </>

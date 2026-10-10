@@ -9,6 +9,9 @@ pub mod placement;
 pub mod popup_drag;
 pub mod popup_size;
 pub mod popup_window;
+pub mod region_geometry;
+pub mod region_window;
+pub mod screen_capture;
 pub mod settings_window;
 pub mod shortcut;
 pub mod tray;
@@ -34,4 +37,19 @@ pub(crate) fn log_failure(action: &str, result: Result<(), AppError>) {
 
 pub(crate) fn window_error(error: tauri::Error) -> AppError {
     AppError::Window(error.to_string())
+}
+
+/// O monitor que contém o ponto (pixels físicos da tela). Fora de qualquer monitor (ex.: após
+/// desconectar um), o primário; `None` só se o sistema não informar nenhum.
+pub(crate) fn monitor_at(
+    app: &tauri::AppHandle,
+    point: placement::Point,
+) -> Result<Option<tauri::Monitor>, AppError> {
+    match app
+        .monitor_from_point(f64::from(point.x), f64::from(point.y))
+        .map_err(window_error)?
+    {
+        Some(monitor) => Ok(Some(monitor)),
+        None => app.primary_monitor().map_err(window_error),
+    }
 }

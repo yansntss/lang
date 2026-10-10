@@ -1,9 +1,11 @@
 use tauri::Manager;
 
-use platform::popup_window::{handle_window_event, show_near_cursor, PopupState};
+use platform::popup_window::{self, show_near_cursor, PopupState};
+use platform::region_window::{self, RegionState};
 use platform::{capture_config, log_failure, settings_window, shortcut, tray};
 use secrets::SecretKind;
 use services::update::{TauriUpdateSource, UpdateService};
+use settings::{Settings, ShortcutSlot};
 use state::AppState;
 
 pub mod commands;
@@ -38,8 +40,12 @@ pub fn run() -> tauri::Result<()> {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(shortcut::plugin())
         .manage(PopupState::default())
+        .manage(RegionState::default())
         .setup(setup)
-        .on_window_event(handle_window_event)
+        .on_window_event(|window, event| {
+            popup_window::handle_window_event(window, event);
+            region_window::handle_window_event(window, event);
+        })
         .invoke_handler(tauri::generate_handler![
             commands::translate::translate,
             commands::translate::copy_to_clipboard,
@@ -60,6 +66,9 @@ pub fn run() -> tauri::Result<()> {
             commands::window::set_popup_pinned,
             commands::window::start_popup_dragging,
             commands::window::start_popup_resizing,
+            commands::region::get_region_snapshot,
+            commands::region::confirm_region,
+            commands::region::cancel_region,
             commands::secrets::set_secret,
             commands::secrets::has_secret,
             commands::secrets::delete_secret,
@@ -83,27 +92,48 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     let settings = app.state::<AppState>().settings.get();
     capture_config::set_allow_editors(settings.preferences.capture_in_editors);
-    let accelerator = shortcut::startup_accelerator(&settings.shortcut)?;
-    capture_config::set_main_key(accelerator.virtual_key);
-    if accelerator.label != settings.shortcut {
-        // O salvo estava inválido e o de fábrica entrou no lugar: corrige o arquivo, para a
-        // janela de configurações mostrar o atalho que realmente vale.
+    tray::create(app.handle())?;
+    let translate = startup_shortcut(app.handle(), &settings, ShortcutSlot::Translate, None)?;
+    let ocr = startup_shortcut(app.handle(), &settings, ShortcutSlot::Ocr, Some(&translate))?;
+    capture_config::set_main_key(translate.virtual_key);
+    for (slot, accelerator) in [
+        (ShortcutSlot::Translate, &translate),
+        (ShortcutSlot::Ocr, &ocr),
+    ] {
+        let registered = shortcut::register_initial(app.handle(), accelerator);
+        shortcut::record_status(slot, accelerator, registered);
+    }
+    tray::update_tooltip(app.handle());
+
+    open_settings_on_first_run(app.handle());
+    Ok(())
+}
+
+/// O atalho de `slot` que vai valer: o salvo, o de fábrica se o salvo estava inválido, ou outro
+/// se ele colidia com `avoid` (o do tradutor). Se mudou, corrige o arquivo, para a janela de
+/// configurações mostrar o atalho que realmente vale.
+fn startup_shortcut(
+    app: &tauri::AppHandle,
+    settings: &Settings,
+    slot: ShortcutSlot,
+    avoid: Option<&platform::accelerator::Accelerator>,
+) -> Result<platform::accelerator::Accelerator, AppError> {
+    let saved = settings.shortcut_for(slot);
+    let parsed = shortcut::startup_accelerator(saved, slot)?;
+    let accelerator = match avoid {
+        Some(avoid) => shortcut::without_collision(avoid, parsed)?,
+        None => parsed,
+    };
+    if accelerator.label != saved {
         if let Err(error) = app
             .state::<AppState>()
             .settings
-            .update_shortcut(&accelerator.label)
+            .update_shortcut(slot, &accelerator.label)
         {
             log::warn!("não foi possível corrigir o atalho salvo: {error:?}");
         }
     }
-
-    let tray = tray::create(app.handle())?;
-    if !shortcut::register_initial(app.handle(), &accelerator) {
-        tray.set_tooltip(Some(tray::tooltip_for(&accelerator.label, false)))?;
-    }
-
-    open_settings_on_first_run(app.handle());
-    Ok(())
+    Ok(accelerator)
 }
 
 /// Sem chave do DeepL o app não traduz nada: leva o usuário direto às configurações.

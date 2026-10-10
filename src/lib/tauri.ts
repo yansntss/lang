@@ -8,9 +8,12 @@ import type {
   KeyCheck,
   PopupResetPayload,
   Preferences,
+  RegionSelection,
+  RegionSnapshot,
   ResizeEdge,
   SecretKind,
   SettingsView,
+  ShortcutSlot,
   Translation,
   UpdateEvent,
 } from "./types";
@@ -18,6 +21,7 @@ import type {
 // Único ponto do front que fala com o backend. Nenhum comando devolve chaves de API.
 
 export const POPUP_RESET_EVENT = "popup://reset";
+export const REGION_SHOW_EVENT = "region://show";
 
 const FALLBACK_ERROR_MESSAGE = "Algo deu errado. Tente novamente.";
 
@@ -147,9 +151,9 @@ export function updateSettings(preferences: Preferences): Promise<SettingsView> 
   return invoke<SettingsView>("update_settings", { preferences });
 }
 
-/** Troca o atalho global (ex.: `"Ctrl+Alt+T"`). Se falhar, o atual continua valendo. */
-export function setShortcut(accelerator: string): Promise<SettingsView> {
-  return invoke<SettingsView>("set_shortcut", { accelerator });
+/** Troca um dos atalhos globais (ex.: `"Ctrl+Alt+T"`). Se falhar, o atual continua valendo. */
+export function setShortcut(accelerator: string, slot: ShortcutSlot): Promise<SettingsView> {
+  return invoke<SettingsView>("set_shortcut", { slot, accelerator });
 }
 
 export function setAutostart(enabled: boolean): Promise<void> {
@@ -176,15 +180,58 @@ export function installUpdate(onEvent: (event: UpdateEvent) => void): Promise<vo
  * app, ou `null` quando não houve captura. Devolve a função que cancela a escuta.
  */
 export function onPopupReset(
-  handler: (prefill: string | null, autoTranslate?: boolean, pinned?: boolean) => void,
+  handler: (
+    prefill: string | null,
+    autoTranslate?: boolean,
+    pinned?: boolean,
+    notice?: string | null,
+  ) => void,
 ): Promise<() => void> {
   return listen<PopupResetPayload>(POPUP_RESET_EVENT, (event) =>
     handler(
       event.payload.prefill,
       event.payload.autoTranslate ?? true,
       event.payload.pinned ?? false,
+      event.payload.notice ?? null,
     ),
   );
+}
+
+/** Bytes do cabeçalho da captura: largura e altura, `u32` little-endian. */
+const SNAPSHOT_HEADER_BYTES = 8;
+
+/** Lê o formato de `get_region_snapshot`: largura, altura e os pixels RGBA. */
+export function decodeSnapshot(buffer: ArrayBuffer): RegionSnapshot {
+  if (buffer.byteLength < SNAPSHOT_HEADER_BYTES) {
+    throw new Error("Captura da tela inválida.");
+  }
+  const header = new DataView(buffer, 0, SNAPSHOT_HEADER_BYTES);
+  const width = header.getUint32(0, true);
+  const height = header.getUint32(4, true);
+  const pixels = new Uint8ClampedArray(buffer, SNAPSHOT_HEADER_BYTES);
+  if (pixels.length !== width * height * 4) {
+    throw new Error("Captura da tela inválida.");
+  }
+  return { width, height, pixels };
+}
+
+/** A captura do monitor sobre o qual a janela de seleção está aberta. */
+export async function getRegionSnapshot(): Promise<RegionSnapshot> {
+  return decodeSnapshot(await invoke<ArrayBuffer>("get_region_snapshot"));
+}
+
+/** Confirma a área arrastada. Uma área pequena demais é recusada e a seleção continua. */
+export function confirmRegion(selection: RegionSelection): Promise<void> {
+  return invoke<void>("confirm_region", { selection });
+}
+
+export function cancelRegion(): Promise<void> {
+  return invoke<void>("cancel_region");
+}
+
+/** A janela de seleção foi aberta de novo, com uma captura nova. */
+export function onRegionShow(handler: () => void): Promise<() => void> {
+  return listen<null>(REGION_SHOW_EVENT, () => handler());
 }
 
 /** Extrai uma mensagem exibível de um erro do backend ou de qualquer valor lançado. */

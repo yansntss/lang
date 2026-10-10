@@ -46,15 +46,27 @@ export default function PopupApp() {
   // Texto capturado da seleção do usuário (se houver) substitui o que estava no campo, e a
   // tradução começa sozinha pelo mesmo caminho da digitação, a menos que o usuário tenha
   // pedido para traduzir só depois do Enter. `stillPinned` vem do backend: o popup só continua
-  // fixado se não foi ocultado entre uma exibição e outra.
+  // fixado se não foi ocultado entre uma exibição e outra (ou abriu ao lado de uma região da
+  // tela). `notice` é um aviso do backend, como uma captura de tela que falhou.
   const reset = useCallback(
-    (prefill: string | null, autoTranslate: boolean = true, stillPinned: boolean = false) => {
+    (
+      prefill: string | null,
+      autoTranslate: boolean = true,
+      stillPinned: boolean = false,
+      notice: string | null = null,
+    ) => {
+      // Fixado e sem texto novo: só o aviso. O que o usuário tinha no popup continua lá.
+      if (stillPinned && prefill === null && notice !== null) {
+        setActionError(notice);
+        setPinned(true);
+        return;
+      }
       cancelExplanation();
       lastRecorded.current = null;
       // Seleção em branco não tem o que traduzir: reter só a prenderia em "Enter traduz".
       setHeld(prefill !== null && prefill.trim() !== "" && !autoTranslate);
       setText(prefill ?? "");
-      setActionError(null);
+      setActionError(notice);
       setCopied(false);
       setPinned(stillPinned);
       inputRef.current?.focus();

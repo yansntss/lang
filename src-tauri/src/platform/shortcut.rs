@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -9,10 +9,10 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 use super::accelerator::{self, Accelerator};
 use super::popup_window::show_near_cursor;
-use super::{capture_foreground_selection, log_failure};
+use super::{capture_foreground_selection, log_failure, region_window};
 use crate::error::AppError;
 use crate::services::capture::CaptureOutcome;
-use crate::settings::{Settings, SettingsStore, DEFAULT_SHORTCUT};
+use crate::settings::{Settings, SettingsStore, ShortcutSlot};
 
 /// Registro de atalhos globais no sistema. Existe para a troca de atalho (e o seu rollback)
 /// poder ser testada sem o sistema.
@@ -35,22 +35,118 @@ impl ShortcutRegistrar for AppHandle {
     }
 }
 
-/// O atalho salvo; se estiver inválido, o de fábrica.
-pub fn startup_accelerator(saved: &str) -> Result<Accelerator, AppError> {
+/// O atalho salvo para `slot`; se estiver inválido, o de fábrica.
+pub fn startup_accelerator(saved: &str, slot: ShortcutSlot) -> Result<Accelerator, AppError> {
     accelerator::parse(saved).or_else(|error| {
         log::warn!("atalho salvo inválido ({saved:?}): {error:?}; usando o de fábrica");
-        accelerator::parse(DEFAULT_SHORTCUT)
+        accelerator::parse(slot.factory_default())
     })
 }
 
 pub fn plugin() -> TauriPlugin<Wry> {
     tauri_plugin_global_shortcut::Builder::new()
-        .with_handler(|app, _shortcut, event| {
-            if event.state() == ShortcutState::Pressed {
-                open_with_selection(app.clone());
+        .with_handler(|app, shortcut, event| {
+            if event.state() != ShortcutState::Pressed {
+                return;
+            }
+            match slot_for(shortcut, registered_shortcut(ShortcutSlot::Ocr).as_ref()) {
+                ShortcutSlot::Translate => open_with_selection(app.clone()),
+                ShortcutSlot::Ocr => region_window::start(app.clone()),
             }
         })
         .build()
+}
+
+/// A qual ação pertence o atalho apertado. Só há dois registrados: o que não é o de OCR é o
+/// do tradutor.
+pub fn slot_for(pressed: &Shortcut, ocr: Option<&Shortcut>) -> ShortcutSlot {
+    if ocr == Some(pressed) {
+        ShortcutSlot::Ocr
+    } else {
+        ShortcutSlot::Translate
+    }
+}
+
+/// Alternativa de fábrica do OCR quando o tradutor já usa o atalho de OCR de fábrica.
+const OCR_COLLISION_FALLBACK: &str = "Ctrl+Alt+Shift+Y";
+
+/// O atalho de OCR que não colide com o do tradutor. Quem já usava `Ctrl+Alt+Y` no tradutor
+/// antes de existir o OCR não pode perdê-lo para o atalho novo.
+pub fn without_collision(
+    translate: &Accelerator,
+    ocr: Accelerator,
+) -> Result<Accelerator, AppError> {
+    if ocr.shortcut != translate.shortcut {
+        return Ok(ocr);
+    }
+    let candidates = [ShortcutSlot::Ocr.factory_default(), OCR_COLLISION_FALLBACK];
+    for candidate in candidates {
+        let fallback = accelerator::parse(candidate)?;
+        if fallback.shortcut != translate.shortcut {
+            log::warn!(
+                "o atalho de OCR {} é o mesmo do tradutor; usando {}",
+                ocr.label,
+                fallback.label
+            );
+            return Ok(fallback);
+        }
+    }
+    // Inalcançável: as duas alternativas são diferentes, e o tradutor só ocupa uma delas.
+    Err(AppError::ShortcutInUse)
+}
+
+/// O que está registrado no sistema para um atalho: o texto (para os avisos) e, se o registro
+/// deu certo, o atalho em si.
+#[derive(Clone)]
+struct SlotStatus {
+    label: String,
+    registered: Option<Shortcut>,
+}
+
+const NO_STATUS: SlotStatus = SlotStatus {
+    label: String::new(),
+    registered: None,
+};
+
+/// Estado de cada slot, na ordem de `ShortcutSlot::ALL`. Fica em memória, ao lado do registro
+/// no sistema: o atalho apertado é comparado com o que foi registrado, não com o arquivo.
+static STATUS: Mutex<[SlotStatus; 2]> = Mutex::new([NO_STATUS, NO_STATUS]);
+
+fn slot_index(slot: ShortcutSlot) -> usize {
+    match slot {
+        ShortcutSlot::Translate => 0,
+        ShortcutSlot::Ocr => 1,
+    }
+}
+
+fn with_status<R>(read: impl FnOnce(&mut [SlotStatus; 2]) -> R) -> R {
+    let mut status = STATUS.lock().unwrap_or_else(PoisonError::into_inner);
+    read(&mut status)
+}
+
+/// Anota o atalho de `slot` e se o sistema aceitou registrá-lo.
+pub fn record_status(slot: ShortcutSlot, accelerator: &Accelerator, registered: bool) {
+    with_status(|status| {
+        status[slot_index(slot)] = SlotStatus {
+            label: accelerator.label.clone(),
+            registered: registered.then_some(accelerator.shortcut),
+        };
+    });
+}
+
+fn registered_shortcut(slot: ShortcutSlot) -> Option<Shortcut> {
+    with_status(|status| status[slot_index(slot)].registered)
+}
+
+/// Os atalhos anotados que o sistema não aceitou registrar.
+pub fn unavailable_labels() -> Vec<String> {
+    with_status(|status| {
+        status
+            .iter()
+            .filter(|slot| slot.registered.is_none() && !slot.label.is_empty())
+            .map(|slot| slot.label.clone())
+            .collect()
+    })
 }
 
 /// Registra o atalho ao iniciar. Devolve `false` se não foi possível (por exemplo, já em uso
@@ -68,16 +164,26 @@ pub fn register_initial(registrar: &impl ShortcutRegistrar, accelerator: &Accele
     }
 }
 
-/// Troca o atalho registrado pelo `new` e só então o grava nas configurações. Se o registro
+/// Troca o atalho de `slot` pelo `new` e só então o grava nas configurações. Se o registro
 /// falhar, o atual continua valendo; se a gravação falhar, o registro volta ao atual.
 pub fn apply_shortcut(
     registrar: &impl ShortcutRegistrar,
     store: &SettingsStore,
+    slot: ShortcutSlot,
     new: &Accelerator,
 ) -> Result<Settings, AppError> {
-    let current = startup_accelerator(&store.get().shortcut)?;
+    let settings = store.get();
+    let other = slot.other();
+    // O sistema aceitaria registrar o mesmo atalho de novo, e um dos dois deixaria de funcionar.
+    if startup_accelerator(settings.shortcut_for(other), other)?.shortcut == new.shortcut {
+        return Err(AppError::InvalidInput(format!(
+            "Esse atalho já é usado para {}. Escolha outro.",
+            other.description()
+        )));
+    }
+    let current = startup_accelerator(settings.shortcut_for(slot), slot)?;
     swap(registrar, &current, new)?;
-    store.update_shortcut(&new.label).inspect_err(|_| {
+    store.update_shortcut(slot, &new.label).inspect_err(|_| {
         if let Err(error) = swap(registrar, new, &current) {
             log::error!(
                 "não foi possível restaurar o atalho {}: {error:?}",
@@ -213,6 +319,7 @@ fn open_with_selection(app: AppHandle) {
 mod tests {
     use super::*;
     use crate::services::capture::SkipReason;
+    use crate::settings::{DEFAULT_OCR_SHORTCUT, DEFAULT_SHORTCUT};
 
     #[test]
     fn a_capture_is_not_stale_before_the_watchdog_expires() {
@@ -395,7 +502,7 @@ mod tests {
         let new = accelerator("Ctrl+Shift+J");
         let registrar = FakeRegistrar::with(&[&old], &[]);
 
-        let saved = apply_shortcut(&registrar, &store, &new).unwrap();
+        let saved = apply_shortcut(&registrar, &store, ShortcutSlot::Translate, &new).unwrap();
 
         assert_eq!(saved.shortcut, "Ctrl+Shift+J");
         assert_eq!(store.get().shortcut, "Ctrl+Shift+J");
@@ -411,7 +518,7 @@ mod tests {
         let new = accelerator("Ctrl+Shift+J");
         let registrar = FakeRegistrar::with(&[&old], &[&new]);
 
-        let error = apply_shortcut(&registrar, &store, &new).unwrap_err();
+        let error = apply_shortcut(&registrar, &store, ShortcutSlot::Translate, &new).unwrap_err();
 
         assert_eq!(error.code(), "shortcut_in_use");
         assert_eq!(store.get().shortcut, "Ctrl+Alt+T");
@@ -429,7 +536,7 @@ mod tests {
         let new = accelerator("Ctrl+Shift+J");
         let registrar = FakeRegistrar::with(&[&old], &[]);
 
-        let error = apply_shortcut(&registrar, &store, &new).unwrap_err();
+        let error = apply_shortcut(&registrar, &store, ShortcutSlot::Translate, &new).unwrap_err();
 
         assert_eq!(error.code(), "settings");
         assert_eq!(registrar.registered(), vec![old.shortcut]);
@@ -448,11 +555,127 @@ mod tests {
 
     #[test]
     fn a_valid_saved_shortcut_is_used_and_an_invalid_one_falls_back_to_the_factory_one() {
+        let translate = ShortcutSlot::Translate;
         assert_eq!(
-            startup_accelerator("Ctrl+Shift+J").unwrap().label,
+            startup_accelerator("Ctrl+Shift+J", translate)
+                .unwrap()
+                .label,
             "Ctrl+Shift+J"
         );
-        assert_eq!(startup_accelerator("lixo").unwrap().label, DEFAULT_SHORTCUT);
-        assert_eq!(startup_accelerator("").unwrap().label, DEFAULT_SHORTCUT);
+        assert_eq!(
+            startup_accelerator("lixo", translate).unwrap().label,
+            DEFAULT_SHORTCUT
+        );
+        assert_eq!(
+            startup_accelerator("", translate).unwrap().label,
+            DEFAULT_SHORTCUT
+        );
+    }
+
+    #[test]
+    fn an_invalid_saved_ocr_shortcut_falls_back_to_the_ocr_factory_one() {
+        assert_eq!(
+            startup_accelerator("lixo", ShortcutSlot::Ocr)
+                .unwrap()
+                .label,
+            DEFAULT_OCR_SHORTCUT
+        );
+    }
+
+    #[test]
+    fn applying_the_ocr_shortcut_saves_it_and_leaves_the_translator_one_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_in(&dir);
+        let translate = accelerator(DEFAULT_SHORTCUT);
+        let old = accelerator(DEFAULT_OCR_SHORTCUT);
+        let new = accelerator("Ctrl+Shift+O");
+        let registrar = FakeRegistrar::with(&[&translate, &old], &[]);
+
+        let saved = apply_shortcut(&registrar, &store, ShortcutSlot::Ocr, &new).unwrap();
+
+        assert_eq!(saved.ocr_shortcut, "Ctrl+Shift+O");
+        assert_eq!(saved.shortcut, DEFAULT_SHORTCUT);
+        assert_eq!(
+            registrar.registered(),
+            vec![translate.shortcut, new.shortcut]
+        );
+    }
+
+    #[test]
+    fn the_translator_shortcut_cannot_be_used_for_ocr_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_in(&dir);
+        let translate = accelerator(DEFAULT_SHORTCUT);
+        let ocr = accelerator(DEFAULT_OCR_SHORTCUT);
+        let registrar = FakeRegistrar::with(&[&translate, &ocr], &[]);
+
+        let error = apply_shortcut(&registrar, &store, ShortcutSlot::Ocr, &translate).unwrap_err();
+
+        assert_eq!(error.code(), "invalid_input");
+        assert!(error.to_string().contains("abrir o tradutor"));
+        assert_eq!(
+            registrar.registered(),
+            vec![translate.shortcut, ocr.shortcut]
+        );
+        assert_eq!(store.get().ocr_shortcut, DEFAULT_OCR_SHORTCUT);
+    }
+
+    #[test]
+    fn the_ocr_shortcut_cannot_be_used_for_the_translator_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_in(&dir);
+        let translate = accelerator(DEFAULT_SHORTCUT);
+        let ocr = accelerator(DEFAULT_OCR_SHORTCUT);
+        let registrar = FakeRegistrar::with(&[&translate, &ocr], &[]);
+
+        let error = apply_shortcut(&registrar, &store, ShortcutSlot::Translate, &ocr).unwrap_err();
+
+        assert_eq!(error.code(), "invalid_input");
+        assert!(error.to_string().contains("ler um trecho da tela"));
+        assert_eq!(store.get().shortcut, DEFAULT_SHORTCUT);
+    }
+
+    #[test]
+    fn the_pressed_shortcut_decides_which_action_runs() {
+        let translate = accelerator(DEFAULT_SHORTCUT);
+        let ocr = accelerator(DEFAULT_OCR_SHORTCUT);
+
+        assert_eq!(
+            slot_for(&ocr.shortcut, Some(&ocr.shortcut)),
+            ShortcutSlot::Ocr
+        );
+        assert_eq!(
+            slot_for(&translate.shortcut, Some(&ocr.shortcut)),
+            ShortcutSlot::Translate
+        );
+        assert_eq!(slot_for(&ocr.shortcut, None), ShortcutSlot::Translate);
+    }
+
+    #[test]
+    fn an_ocr_shortcut_that_does_not_collide_is_kept() {
+        let translate = accelerator("Ctrl+Alt+T");
+
+        let ocr = without_collision(&translate, accelerator("Ctrl+Shift+O")).unwrap();
+
+        assert_eq!(ocr.label, "Ctrl+Shift+O");
+    }
+
+    #[test]
+    fn a_translator_already_on_the_ocr_factory_shortcut_pushes_ocr_to_the_fallback() {
+        let translate = accelerator(DEFAULT_OCR_SHORTCUT);
+
+        let ocr = without_collision(&translate, accelerator(DEFAULT_OCR_SHORTCUT)).unwrap();
+
+        assert_eq!(ocr.label, "Ctrl+Alt+Shift+Y");
+        assert_ne!(ocr.shortcut, translate.shortcut);
+    }
+
+    #[test]
+    fn a_custom_ocr_shortcut_equal_to_the_translator_goes_back_to_the_factory_one() {
+        let translate = accelerator("Ctrl+Shift+J");
+
+        let ocr = without_collision(&translate, accelerator("Ctrl+Shift+J")).unwrap();
+
+        assert_eq!(ocr.label, DEFAULT_OCR_SHORTCUT);
     }
 }

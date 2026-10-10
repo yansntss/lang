@@ -1,5 +1,6 @@
 pub mod explain;
 pub mod history;
+pub mod region;
 pub mod secrets;
 pub mod settings;
 pub mod translate;

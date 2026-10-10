@@ -32,6 +32,7 @@ const BACKEND_ERROR = { code: "settings", message: "Não foi possível salvar as
 
 const BASE: SettingsView = {
   shortcut: "Ctrl+Alt+T",
+  ocrShortcut: "Ctrl+Alt+Y",
   autostart: false,
   appVersion: "0.1.0",
   theme: "system",
@@ -45,7 +46,8 @@ const BASE: SettingsView = {
 const section = (name: string) => screen.getByRole("region", { name });
 const deepl = () => section("DeepL");
 const anthropic = () => section("Anthropic");
-const shortcut = () => section("Atalho global");
+const shortcut = () => section("Atalho do tradutor");
+const ocrShortcut = () => section("Atalho da leitura de tela");
 const general = () => section("Geral");
 
 async function renderSettled() {
@@ -272,6 +274,70 @@ describe("SettingsApp — chaves", () => {
   });
 });
 
+describe("SettingsApp — atalho da leitura de tela", () => {
+  it("shows the current OCR shortcut next to the translator one", async () => {
+    await renderSettled();
+
+    expect(within(ocrShortcut()).getByText("Ctrl+Alt+Y", { selector: "kbd" })).toBeInTheDocument();
+    expect(within(shortcut()).getByText("Ctrl+Alt+T", { selector: "kbd" })).toBeInTheDocument();
+  });
+
+  it("changes only the OCR shortcut", async () => {
+    setShortcut.mockResolvedValue({ ...BASE, ocrShortcut: "Ctrl+Shift+O" });
+    const user = userEvent.setup();
+    await renderSettled();
+    await user.click(within(ocrShortcut()).getByRole("button", { name: "Alterar atalho" }));
+
+    fireEvent.keyDown(window, { code: "KeyO", ctrlKey: true, shiftKey: true });
+
+    expect(
+      await within(ocrShortcut()).findByText("Atalho alterado para Ctrl+Shift+O."),
+    ).toBeInTheDocument();
+    expect(setShortcut).toHaveBeenCalledExactlyOnceWith("Ctrl+Shift+O", "ocr");
+    expect(within(ocrShortcut()).getByText("Ctrl+Shift+O", { selector: "kbd" })).toBeInTheDocument();
+    expect(within(shortcut()).getByText("Ctrl+Alt+T", { selector: "kbd" })).toBeInTheDocument();
+  });
+
+  it("shows why the backend refused a shortcut already used by the translator", async () => {
+    setShortcut.mockRejectedValue({
+      code: "invalid_input",
+      message: "Esse atalho já é usado para abrir o tradutor. Escolha outro.",
+    });
+    const user = userEvent.setup();
+    await renderSettled();
+    await user.click(within(ocrShortcut()).getByRole("button", { name: "Alterar atalho" }));
+
+    fireEvent.keyDown(window, { code: "KeyT", ctrlKey: true, altKey: true });
+
+    expect(await within(ocrShortcut()).findByRole("alert")).toHaveTextContent(
+      "já é usado para abrir o tradutor",
+    );
+    expect(within(ocrShortcut()).getByText("Ctrl+Alt+Y", { selector: "kbd" })).toBeInTheDocument();
+  });
+
+  it("one key press changes a single shortcut even if both sections are recording", async () => {
+    setShortcut.mockResolvedValue({ ...BASE, shortcut: "Ctrl+Shift+K" });
+    const user = userEvent.setup();
+    await renderSettled();
+    await user.click(within(shortcut()).getByRole("button", { name: "Alterar atalho" }));
+    await user.click(within(ocrShortcut()).getByRole("button", { name: "Alterar atalho" }));
+
+    fireEvent.keyDown(window, { code: "KeyK", ctrlKey: true, shiftKey: true });
+
+    await waitFor(() => expect(setShortcut).toHaveBeenCalledTimes(1));
+  });
+
+  it("records the combination only in the section being changed", async () => {
+    setShortcut.mockResolvedValue({ ...BASE, ocrShortcut: "Ctrl+Shift+O" });
+    const user = userEvent.setup();
+    await renderSettled();
+    await user.click(within(ocrShortcut()).getByRole("button", { name: "Alterar atalho" }));
+
+    expect(within(shortcut()).getByRole("button", { name: "Alterar atalho" })).toBeInTheDocument();
+    expect(within(ocrShortcut()).getByRole("button", { name: "Cancelar" })).toBeInTheDocument();
+  });
+});
+
 describe("SettingsApp — atalho", () => {
   it("shows the current shortcut", async () => {
     await renderSettled();
@@ -290,7 +356,7 @@ describe("SettingsApp — atalho", () => {
     fireEvent.keyDown(window, { code: "KeyK", ctrlKey: true, altKey: true });
 
     expect(await screen.findByText("Atalho alterado para Ctrl+Alt+K.")).toBeInTheDocument();
-    expect(setShortcut).toHaveBeenCalledExactlyOnceWith("Ctrl+Alt+K");
+    expect(setShortcut).toHaveBeenCalledExactlyOnceWith("Ctrl+Alt+K", "translate");
     expect(within(shortcut()).getByText("Ctrl+Alt+K", { selector: "kbd" })).toBeInTheDocument();
     expect(screen.queryByText(/Aperte a nova combinação/)).not.toBeInTheDocument();
   });
@@ -586,7 +652,8 @@ describe("SettingsApp — geral", () => {
 
     expect(await screen.findByText(BACKEND_ERROR.message)).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Geral" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Atalho global" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Atalho do tradutor" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Atalho da leitura de tela" })).not.toBeInTheDocument();
     expect(deepl()).toBeInTheDocument();
   });
 });

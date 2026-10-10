@@ -17,9 +17,13 @@ export interface Preferences {
   autoTranslateSelection: boolean;
 }
 
-/** O que `get_settings` devolve: preferências, atalho e o início com o Windows. */
+/** Qual dos atalhos globais: o do tradutor ou o da leitura de um trecho da tela (OCR). */
+export type ShortcutSlot = "translate" | "ocr";
+
+/** O que `get_settings` devolve: preferências, atalhos e o início com o Windows. */
 export interface SettingsView extends Preferences {
   shortcut: string;
+  ocrShortcut: string;
   autostart: boolean;
   /** Versão do app em execução. */
   appVersion: string;
@@ -93,6 +97,23 @@ export interface PopupResetPayload {
   autoTranslate?: boolean;
   /** O popup continua fixado na tela. Ausente: `false`. */
   pinned?: boolean;
+  /** Aviso a mostrar no popup (por exemplo, a captura da tela falhou). */
+  notice?: string | null;
+}
+
+/** Retângulo arrastado na janela de seleção, em pixels da janela (CSS). */
+export interface RegionSelection {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** A captura da tela que a janela de seleção desenha, em pixels físicos RGBA. */
+export interface RegionSnapshot {
+  width: number;
+  height: number;
+  pixels: Uint8ClampedArray<ArrayBuffer>;
 }
 
 /** Borda ou canto do popup que o usuário arrasta para redimensionar. */

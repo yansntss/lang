@@ -3,7 +3,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{PoisonError, RwLock};
 
-use super::{PopupSize, Preferences, Settings};
+use super::{PopupSize, Preferences, Settings, ShortcutSlot};
 use crate::error::AppError;
 
 /// Configurações em memória, espelhadas em um JSON no disco. A gravação é atômica (arquivo
@@ -56,8 +56,15 @@ impl SettingsStore {
         self.update(|settings| settings.preferences = preferences)
     }
 
-    pub fn update_shortcut(&self, shortcut: &str) -> Result<Settings, AppError> {
-        self.update(|settings| settings.shortcut = shortcut.to_owned())
+    pub fn update_shortcut(
+        &self,
+        slot: ShortcutSlot,
+        shortcut: &str,
+    ) -> Result<Settings, AppError> {
+        self.update(|settings| match slot {
+            ShortcutSlot::Translate => settings.shortcut = shortcut.to_owned(),
+            ShortcutSlot::Ocr => settings.ocr_shortcut = shortcut.to_owned(),
+        })
     }
 
     pub fn update_popup_size(&self, size: PopupSize) -> Result<Settings, AppError> {
@@ -149,10 +156,24 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = path_in(&dir);
         SettingsStore::load(&path)
-            .update_shortcut("Ctrl+Shift+J")
+            .update_shortcut(ShortcutSlot::Translate, "Ctrl+Shift+J")
             .unwrap();
 
         assert_eq!(SettingsStore::load(&path).get().shortcut, "Ctrl+Shift+J");
+    }
+
+    #[test]
+    fn the_ocr_shortcut_is_saved_without_touching_the_translator_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = path_in(&dir);
+        SettingsStore::load(&path)
+            .update_shortcut(ShortcutSlot::Ocr, "Ctrl+Shift+O")
+            .unwrap();
+
+        let reloaded = SettingsStore::load(&path).get();
+
+        assert_eq!(reloaded.ocr_shortcut, "Ctrl+Shift+O");
+        assert_eq!(reloaded.shortcut, DEFAULT_SHORTCUT);
     }
 
     #[test]
@@ -179,7 +200,9 @@ mod tests {
     fn updating_returns_the_new_settings_and_keeps_the_other_group() {
         let dir = tempfile::tempdir().unwrap();
         let store = SettingsStore::load(&path_in(&dir));
-        store.update_shortcut("Alt+F2").unwrap();
+        store
+            .update_shortcut(ShortcutSlot::Translate, "Alt+F2")
+            .unwrap();
 
         let updated = store
             .update_preferences(Preferences {
@@ -274,7 +297,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = SettingsStore::load(&path_in(&dir));
 
-        store.update_shortcut("Ctrl+Alt+K").unwrap();
+        store
+            .update_shortcut(ShortcutSlot::Translate, "Ctrl+Alt+K")
+            .unwrap();
 
         assert!(!dir.path().join("settings.json.tmp").exists());
         assert!(path_in(&dir).exists());

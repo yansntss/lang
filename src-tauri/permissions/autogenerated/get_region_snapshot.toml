@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-region-snapshot"
+description = "Enables the get_region_snapshot command without any pre-configured scope."
+commands.allow = ["get_region_snapshot"]
+
+[[permission]]
+identifier = "deny-get-region-snapshot"
+description = "Denies the get_region_snapshot command without any pre-configured scope."
+commands.deny = ["get_region_snapshot"]

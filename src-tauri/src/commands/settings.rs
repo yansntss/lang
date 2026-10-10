@@ -6,7 +6,7 @@ use crate::error::AppError;
 use crate::platform::{accelerator, capture_config, shortcut, tray};
 use crate::secrets::SecretKind;
 use crate::services::deepl::Usage;
-use crate::settings::{PreferencesUpdate, Settings};
+use crate::settings::{PreferencesUpdate, Settings, ShortcutSlot};
 use crate::state::AppState;
 
 /// O que a janela de configurações mostra: o salvo mais o que só o sistema sabe.
@@ -57,17 +57,21 @@ pub fn update_settings(
     Ok(view(&app, settings))
 }
 
-/// Troca o atalho global. Se o novo não puder ser registrado, o atual continua valendo.
+/// Troca um dos atalhos globais. Se o novo não puder ser registrado, o atual continua valendo.
 #[tauri::command]
 pub fn set_shortcut(
     app: AppHandle,
     state: State<'_, AppState>,
+    slot: ShortcutSlot,
     accelerator: String,
 ) -> Result<SettingsView, AppError> {
     let new = accelerator::parse(&accelerator)?;
-    let settings = shortcut::apply_shortcut(&app, &state.settings, &new)?;
-    capture_config::set_main_key(new.virtual_key);
-    tray::update_tooltip(&app, &new.label, true);
+    let settings = shortcut::apply_shortcut(&app, &state.settings, slot, &new)?;
+    shortcut::record_status(slot, &new, true);
+    tray::update_tooltip(&app);
+    if slot == ShortcutSlot::Translate {
+        capture_config::set_main_key(new.virtual_key);
+    }
     Ok(view(&app, settings))
 }
 
@@ -115,6 +119,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(json["shortcut"], "Ctrl+Alt+T");
+        assert_eq!(json["ocrShortcut"], "Ctrl+Alt+Y");
         assert_eq!(json["theme"], "system");
         assert_eq!(json["autostart"], true);
         assert_eq!(json["appVersion"], "0.1.0");

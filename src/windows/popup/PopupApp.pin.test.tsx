@@ -25,7 +25,12 @@ const startPopupDragging = vi.mocked(tauri.startPopupDragging);
 const startPopupResizing = vi.mocked(tauri.startPopupResizing);
 
 let resetHandler:
-  | ((prefill: string | null, autoTranslate?: boolean, pinned?: boolean) => void)
+  | ((
+      prefill: string | null,
+      autoTranslate?: boolean,
+      pinned?: boolean,
+      notice?: string | null,
+    ) => void)
   | undefined;
 
 function translation(text: string): Translation {
@@ -194,5 +199,41 @@ describe("resizing the window", () => {
     fireEvent.mouseDown(container.querySelector('[data-edge="west"]')!, { button: 0, detail: 2 });
 
     expect(startPopupDragging).not.toHaveBeenCalled();
+  });
+});
+
+describe("PopupApp — aviso do backend", () => {
+  it("shows the notice sent with the reset and clears it on the next reset", async () => {
+    render(<PopupApp />);
+    await waitFor(() => expect(resetHandler).toBeDefined());
+
+    act(() => resetHandler?.(null, true, false, "A captura da tela veio preta."));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("A captura da tela veio preta.");
+
+    act(() => resetHandler?.("hello", true, false, null));
+
+    expect(screen.queryByText("A captura da tela veio preta.")).not.toBeInTheDocument();
+  });
+
+  it("a notice for a pinned popup keeps the text that was already there", async () => {
+    translate.mockResolvedValue(translation("olá"));
+    render(<PopupApp />);
+    await waitFor(() => expect(resetHandler).toBeDefined());
+    act(() => resetHandler?.("hello", true, true, null));
+
+    act(() => resetHandler?.(null, true, true, "A captura da tela veio preta."));
+
+    expect(field()).toHaveValue("hello");
+    expect(screen.getByRole("alert")).toHaveTextContent("A captura da tela veio preta.");
+  });
+
+  it("opens pinned when the text came from a screen region", async () => {
+    render(<PopupApp />);
+    await waitFor(() => expect(resetHandler).toBeDefined());
+
+    act(() => resetHandler?.(null, true, true, null));
+
+    expect(pinButton()).toHaveAttribute("aria-pressed", "true");
   });
 });

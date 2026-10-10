@@ -18,6 +18,7 @@ export default defineConfig(() => ({
         popup: entry("./popup.html"),
         settings: entry("./settings.html"),
         history: entry("./history.html"),
+        region: entry("./region.html"),
       },
     },
   },

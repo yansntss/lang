@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "region",
+  "description": "Permissões mínimas da janela de seleção de região (OCR)",
+  "windows": ["region"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-get-region-snapshot",
+    "allow-confirm-region",
+    "allow-cancel-region"
+  ]
+}

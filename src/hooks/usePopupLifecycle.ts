@@ -6,7 +6,12 @@ interface PopupLifecycleHandlers {
    * O popup foi exibido de novo: focar o campo e preenchê-lo com o texto capturado, se houver.
    * `autoTranslate` falso pede para não traduzir o texto capturado até o usuário confirmar.
    */
-  onReset: (prefill: string | null, autoTranslate?: boolean, pinned?: boolean) => void;
+  onReset: (
+    prefill: string | null,
+    autoTranslate?: boolean,
+    pinned?: boolean,
+    notice?: string | null,
+  ) => void;
   onError: (message: string) => void;
 }
 
@@ -21,8 +26,8 @@ export function usePopupLifecycle({ onReset, onError }: PopupLifecycleHandlers):
     let disposed = false;
     let stopListening: (() => void) | undefined;
 
-    onPopupReset((prefill, autoTranslate, pinned) =>
-      handlers.current.onReset(prefill, autoTranslate, pinned),
+    onPopupReset((prefill, autoTranslate, pinned, notice) =>
+      handlers.current.onReset(prefill, autoTranslate, pinned, notice),
     ).then(
       (stop) => {
         if (disposed) {
