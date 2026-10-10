@@ -6,9 +6,7 @@ App de bandeja para **Windows 10/11** (Tauri v2 + React/TypeScript) que traduz r
 e português, feito para quem está aprendendo inglês e quer traduzir sem sair do que está fazendo.
 A interface e esta documentação estão em português. O repositório se chama `lang`.
 
-<!-- Screenshot: salve a imagem em docs/popup.png e descomente a linha abaixo.
 ![Caixa de tradução perto do cursor](docs/popup.png)
--->
 
 Aperte **`Ctrl+Alt+T`** em qualquer app: abre uma caixa flutuante perto do cursor. Se havia texto
 selecionado, ele já vem preenchido e é traduzido na hora. Inglês vira português; qualquer outro

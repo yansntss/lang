@@ -7,9 +7,7 @@ between English and Brazilian Portuguese. It is built for people learning Englis
 translate without leaving what they are doing. The app's interface is in Portuguese. The
 repository is named `lang`.
 
-<!-- Screenshot: save the image as docs/popup.png and uncomment the line below.
 ![Translation box next to the cursor](docs/popup.png)
--->
 
 Press **`Ctrl+Alt+T`** in any app: a floating box opens near the cursor. If text was selected, it
 is filled in and translated right away. English becomes Portuguese; any other language becomes
