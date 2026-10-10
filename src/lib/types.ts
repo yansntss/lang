@@ -91,4 +91,17 @@ export interface PopupResetPayload {
   prefill: string | null;
   /** Ausente em versões antigas do backend: tratar como `true`. */
   autoTranslate?: boolean;
+  /** O popup continua fixado na tela. Ausente: `false`. */
+  pinned?: boolean;
 }
+
+/** Borda ou canto do popup que o usuário arrasta para redimensionar. */
+export type ResizeEdge =
+  | "north"
+  | "south"
+  | "east"
+  | "west"
+  | "northEast"
+  | "northWest"
+  | "southEast"
+  | "southWest";

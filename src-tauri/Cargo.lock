@@ -2390,6 +2390,7 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "tauri-runtime",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",

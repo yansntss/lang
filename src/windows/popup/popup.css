@@ -1,4 +1,5 @@
 .popup {
+  position: relative;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -12,6 +13,8 @@
   box-sizing: border-box;
   width: 100%;
   padding: 8px;
+  /* Espaço para o botão de fixar no canto. */
+  padding-right: 26px;
   resize: none;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -29,6 +32,105 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+}
+
+/* Botão de fixar: quase invisível até o mouse chegar perto ou o popup estar fixado. */
+.popup__pin {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0.35;
+  cursor: pointer;
+}
+
+.popup__pin:hover,
+.popup__pin:focus-visible {
+  opacity: 1;
+}
+
+.popup__pin[aria-pressed="true"] {
+  color: var(--accent);
+  opacity: 1;
+}
+
+/* Alças de redimensionar: ficam no padding de 10 px, sem cobrir o conteúdo. */
+.popup__grip {
+  position: absolute;
+  z-index: 2;
+}
+
+.popup__grip--north,
+.popup__grip--south {
+  left: 10px;
+  right: 10px;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.popup__grip--east,
+.popup__grip--west {
+  top: 10px;
+  bottom: 10px;
+  width: 6px;
+  cursor: ew-resize;
+}
+
+.popup__grip--north {
+  top: 0;
+}
+
+.popup__grip--south {
+  bottom: 0;
+}
+
+.popup__grip--east {
+  right: 0;
+}
+
+.popup__grip--west {
+  left: 0;
+}
+
+.popup__grip--northEast,
+.popup__grip--northWest,
+.popup__grip--southEast,
+.popup__grip--southWest {
+  width: 10px;
+  height: 10px;
+}
+
+.popup__grip--northWest {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.popup__grip--southEast {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+
+.popup__grip--northEast {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.popup__grip--southWest {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
 }
 
 /* `flow-root` contém as margens dos filhos, para a altura medida incluí-las. */

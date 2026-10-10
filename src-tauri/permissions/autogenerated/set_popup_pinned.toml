@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-popup-pinned"
+description = "Enables the set_popup_pinned command without any pre-configured scope."
+commands.allow = ["set_popup_pinned"]
+
+[[permission]]
+identifier = "deny-set-popup-pinned"
+description = "Denies the set_popup_pinned command without any pre-configured scope."
+commands.deny = ["set_popup_pinned"]

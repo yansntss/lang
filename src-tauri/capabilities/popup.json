@@ -14,6 +14,9 @@
     "allow-record-history",
     "allow-get-settings",
     "allow-hide-popup",
-    "allow-fit-popup-height"
+    "allow-fit-popup-height",
+    "allow-set-popup-pinned",
+    "allow-start-popup-dragging",
+    "allow-start-popup-resizing"
   ]
 }

@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -23,13 +24,15 @@ pub const POPUP_LABEL: &str = "popup";
 /// Enviado ao front a cada exibição: limpar o texto, focar o campo e, se houver, preencher.
 pub const EVENT_RESET: &str = "popup://reset";
 
-/// Corpo do evento `popup://reset`. `prefill` é o texto capturado da seleção do usuário e
-/// `auto_translate` diz se ele deve ser traduzido sozinho ou só depois do Enter.
+/// Corpo do evento `popup://reset`. `prefill` é o texto capturado da seleção do usuário,
+/// `auto_translate` diz se ele deve ser traduzido sozinho ou só depois do Enter, e `pinned` se
+/// o popup continua fixado na tela.
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ResetPayload<'a> {
     prefill: Option<&'a str>,
     auto_translate: bool,
+    pinned: bool,
 }
 const CURSOR_OFFSET_LOGICAL: f64 = 12.0;
 /// Logo depois de exibir, o app mexe no tamanho e na posição da janela; esses `Resized`
@@ -53,9 +56,15 @@ struct SizeState {
 pub struct PopupState {
     shown_at: Mutex<Option<Instant>>,
     size: Mutex<SizeState>,
+    /// Fixado: não some ao perder o foco. Vale só até o popup ser ocultado.
+    pinned: AtomicBool,
 }
 
 impl PopupState {
+    fn is_pinned(&self) -> bool {
+        self.pinned.load(Ordering::Relaxed)
+    }
+
     fn mark_shown(&self) {
         if let Ok(mut shown_at) = self.shown_at.lock() {
             *shown_at = Some(Instant::now());
@@ -95,6 +104,15 @@ pub fn show_near_cursor(app: &AppHandle, prefill: Option<&str>) -> Result<(), Ap
         return Ok(());
     }
 
+    // Fixado e visível: fica onde o usuário o deixou, no tamanho em que está. Só recebe o
+    // texto capturado (se houver; senão mantém o que estava no campo) e o foco.
+    if window.is_visible().map_err(window_error)? && app.state::<PopupState>().is_pinned() {
+        if let Some(prefill) = prefill {
+            emit_reset(app, Some(prefill), true)?;
+        }
+        return window.set_focus().map_err(window_error);
+    }
+
     let cursor = app.cursor_position().map_err(window_error)?;
     // Cursor fora de qualquer monitor (ex.: após desconectar um): usa o monitor primário,
     // e `place_near_cursor` limita a janela a ele.
@@ -128,6 +146,14 @@ pub fn show_near_cursor(app: &AppHandle, prefill: Option<&str>) -> Result<(), Ap
             .map_err(window_error)?;
     }
 
+    emit_reset(app, prefill, false)?;
+    window.show().map_err(window_error)?;
+    let focus_result = window.set_focus().map_err(window_error);
+    hide_if_still_unfocused(window);
+    focus_result
+}
+
+fn emit_reset(app: &AppHandle, prefill: Option<&str>, pinned: bool) -> Result<(), AppError> {
     // Sem o estado ainda (uma segunda instância muito cedo), mantém o comportamento de fábrica.
     let auto_translate = app
         .try_state::<AppState>()
@@ -138,13 +164,24 @@ pub fn show_near_cursor(app: &AppHandle, prefill: Option<&str>) -> Result<(), Ap
         ResetPayload {
             prefill,
             auto_translate,
+            pinned,
         },
     )
-    .map_err(window_error)?;
-    window.show().map_err(window_error)?;
-    let focus_result = window.set_focus().map_err(window_error);
-    hide_if_still_unfocused(window);
-    focus_result
+    .map_err(window_error)
+}
+
+/// Fixa ou solta o popup. Fixado, ele não some ao perder o foco.
+pub fn set_pinned(app: &AppHandle, pinned: bool) {
+    app.state::<PopupState>()
+        .pinned
+        .store(pinned, Ordering::Relaxed);
+}
+
+/// Antes de ocultar: grava o tamanho escolhido e solta o popup, que volta a abrir perto do
+/// cursor na próxima vez.
+pub fn prepare_to_hide(app: &AppHandle) {
+    set_pinned(app, false);
+    save_size_if_changed(app);
 }
 
 /// Faz o popup crescer (ou voltar ao tamanho escolhido) para caber `content_height` pixels
@@ -270,7 +307,7 @@ fn remember_user_resize(window: &Window, resized: PhysicalSize<u32>) {
 }
 
 /// Grava o tamanho escolhido pelo usuário, se mudou. Chamada ao ocultar o popup.
-pub fn save_size_if_changed(app: &AppHandle) {
+fn save_size_if_changed(app: &AppHandle) {
     let state = app.state::<PopupState>();
     let Some(preferred) = state.with_size(|size| size.preferred.filter(|_| size.dirty)) else {
         return;
@@ -315,11 +352,15 @@ fn hide_if_still_unfocused(window: WebviewWindow) {
     thread::spawn(move || {
         thread::sleep(BLUR_GRACE);
 
-        let shown_at = window.app_handle().state::<PopupState>().shown_at();
+        let state = window.app_handle().state::<PopupState>();
+        if state.is_pinned() {
+            return;
+        }
+        let shown_at = state.shown_at();
         match window.is_focused() {
             Ok(is_focused) => {
                 if should_hide_unfocused(is_focused, shown_at, Instant::now()) {
-                    save_size_if_changed(window.app_handle());
+                    prepare_to_hide(window.app_handle());
                     if let Err(error) = window.hide() {
                         log::warn!("não foi possível ocultar o popup sem foco: {error}");
                     }
@@ -330,7 +371,8 @@ fn hide_if_still_unfocused(window: WebviewWindow) {
     });
 }
 
-/// Oculta o popup ao perder o foco e impede que seja destruído ao ser "fechado".
+/// Oculta o popup ao perder o foco (a menos que esteja fixado) e impede que seja destruído ao
+/// ser "fechado".
 pub fn handle_window_event(window: &Window, event: &WindowEvent) {
     if window.label() != POPUP_LABEL {
         return;
@@ -338,8 +380,8 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
 
     match event {
         WindowEvent::Focused(false) => {
-            let shown_at = window.state::<PopupState>().shown_at();
-            if should_hide_on_blur(shown_at, Instant::now()) {
+            let state = window.state::<PopupState>();
+            if !state.is_pinned() && should_hide_on_blur(state.shown_at(), Instant::now()) {
                 hide(window);
             }
         }
@@ -353,7 +395,7 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
 }
 
 fn hide(window: &Window) {
-    save_size_if_changed(window.app_handle());
+    prepare_to_hide(window.app_handle());
     if let Err(error) = window.hide() {
         log::warn!("não foi possível ocultar o popup: {error}");
     }
@@ -372,10 +414,14 @@ mod tests {
         let json = serde_json::to_string(&ResetPayload {
             prefill: Some("olá mundo"),
             auto_translate: true,
+            pinned: false,
         })
         .unwrap();
 
-        assert_eq!(json, r#"{"prefill":"olá mundo","autoTranslate":true}"#);
+        assert_eq!(
+            json,
+            r#"{"prefill":"olá mundo","autoTranslate":true,"pinned":false}"#
+        );
     }
 
     #[test]
@@ -383,10 +429,26 @@ mod tests {
         let json = serde_json::to_string(&ResetPayload {
             prefill: None,
             auto_translate: false,
+            pinned: false,
         })
         .unwrap();
 
-        assert_eq!(json, r#"{"prefill":null,"autoTranslate":false}"#);
+        assert_eq!(
+            json,
+            r#"{"prefill":null,"autoTranslate":false,"pinned":false}"#
+        );
+    }
+
+    #[test]
+    fn reset_payload_tells_the_front_the_popup_is_still_pinned() {
+        let json = serde_json::to_value(ResetPayload {
+            prefill: Some("hello"),
+            auto_translate: true,
+            pinned: true,
+        })
+        .unwrap();
+
+        assert_eq!(json["pinned"], serde_json::json!(true));
     }
 
     #[test]

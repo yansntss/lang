@@ -6,6 +6,7 @@ pub mod accelerator;
 pub mod capture_config;
 pub mod history_window;
 pub mod placement;
+pub mod popup_drag;
 pub mod popup_size;
 pub mod popup_window;
 pub mod settings_window;

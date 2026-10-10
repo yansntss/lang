@@ -8,6 +8,7 @@ import type {
   KeyCheck,
   PopupResetPayload,
   Preferences,
+  ResizeEdge,
   SecretKind,
   SettingsView,
   Translation,
@@ -106,6 +107,21 @@ export function fitPopupHeight(contentHeight: number): Promise<void> {
   return invoke<void>("fit_popup_height", { contentHeight });
 }
 
+/** Fixado, o popup não some ao perder o foco. Ocultá-lo o solta de novo. */
+export function setPopupPinned(pinned: boolean): Promise<void> {
+  return invoke<void>("set_popup_pinned", { pinned });
+}
+
+/** Chamar no mousedown: o sistema move a janela até o botão ser solto. */
+export function startPopupDragging(): Promise<void> {
+  return invoke<void>("start_popup_dragging");
+}
+
+/** Chamar no mousedown de uma alça: o sistema redimensiona até o botão ser solto. */
+export function startPopupResizing(edge: ResizeEdge): Promise<void> {
+  return invoke<void>("start_popup_resizing", { edge });
+}
+
 export function setSecret(kind: SecretKind, value: string): Promise<void> {
   return invoke<void>("set_secret", { kind, value });
 }
@@ -160,10 +176,14 @@ export function installUpdate(onEvent: (event: UpdateEvent) => void): Promise<vo
  * app, ou `null` quando não houve captura. Devolve a função que cancela a escuta.
  */
 export function onPopupReset(
-  handler: (prefill: string | null, autoTranslate?: boolean) => void,
+  handler: (prefill: string | null, autoTranslate?: boolean, pinned?: boolean) => void,
 ): Promise<() => void> {
   return listen<PopupResetPayload>(POPUP_RESET_EVENT, (event) =>
-    handler(event.payload.prefill, event.payload.autoTranslate ?? true),
+    handler(
+      event.payload.prefill,
+      event.payload.autoTranslate ?? true,
+      event.payload.pinned ?? false,
+    ),
   );
 }
 
