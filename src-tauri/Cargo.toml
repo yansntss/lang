@@ -3,6 +3,7 @@ name = "lang-app"
 version = "0.1.0"
 description = "Tradutor por atalho: traduz o texto selecionado entre inglês e português"
 authors = ["yansntss"]
+license = "MIT"
 repository = "https://github.com/yansntss/lang"
 edition = "2021"
 

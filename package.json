@@ -2,6 +2,7 @@
   "name": "lang-app",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "description": "Tradutor por atalho: traduz o texto selecionado entre inglês e português",
   "type": "module",
   "scripts": {

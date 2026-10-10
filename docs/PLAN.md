@@ -436,7 +436,8 @@ Notas e decisões da Fase 6a:
 - O binário de release carrega a configuração inteira embutida, inclusive o `devCsp` e o
   `devUrl` (`localhost:1420`); eles só valem em `tauri dev`. Não há fixtures de teste nem chaves
   de exemplo no binário.
-- Sem arquivo de licença por enquanto (README: "todos os direitos reservados").
+- Licença MIT adotada com o repositório público (arquivo `LICENSE`); o README principal ficou em
+  português, com `README.en.md` em inglês e a rotina de release em `docs/RELEASING.md`.
 
 Revisão de segurança final (security-reviewer): sem itens críticos ou altos; o histórico git não
 tem segredos. Corrigido: `.gitignore` (certificados, bancos, `.claude/settings.json`), ações do CI
