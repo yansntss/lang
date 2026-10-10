@@ -13,7 +13,7 @@ const MENU_HISTORY: &str = "history";
 const MENU_SETTINGS: &str = "settings";
 const MENU_QUIT: &str = "quit";
 
-pub const TOOLTIP: &str = "Tradutor";
+pub const TOOLTIP: &str = "Lang";
 
 /// Texto da dica da bandeja: avisa quando o atalho não pôde ser registrado.
 pub fn tooltip_for(shortcut_label: &str, shortcut_available: bool) -> String {
@@ -79,10 +79,10 @@ mod tests {
 
     #[test]
     fn the_tooltip_only_warns_when_the_shortcut_is_unavailable() {
-        assert_eq!(tooltip_for("Ctrl+Alt+T", true), "Tradutor");
+        assert_eq!(tooltip_for("Ctrl+Alt+T", true), "Lang");
         assert_eq!(
             tooltip_for("Ctrl+Alt+T", false),
-            "Tradutor — atalho Ctrl+Alt+T indisponível"
+            "Lang — atalho Ctrl+Alt+T indisponível"
         );
     }
 }

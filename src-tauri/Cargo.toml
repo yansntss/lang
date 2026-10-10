@@ -1,5 +1,5 @@
 [package]
-name = "lang-app"
+name = "lang"
 version = "0.1.0"
 description = "Tradutor por atalho: traduz o texto selecionado entre inglês e português"
 authors = ["yansntss"]
@@ -13,7 +13,7 @@ edition = "2021"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "lang_app_lib"
+name = "lang_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

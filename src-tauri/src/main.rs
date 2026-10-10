@@ -2,9 +2,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    if let Err(error) = lang_app_lib::run() {
+    if let Err(error) = lang_lib::run() {
         // Sem console no release: o erro vira uma caixa de mensagem e um arquivo.
-        lang_app_lib::fatal::report_startup_failure(&error);
+        lang_lib::fatal::report_startup_failure(&error);
         std::process::exit(1);
     }
 }

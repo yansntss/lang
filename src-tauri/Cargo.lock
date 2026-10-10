@@ -2373,7 +2373,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lang-app"
+name = "lang"
 version = "0.1.0"
 dependencies = [
  "keyring",

@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const root = (path) => fileURLToPath(new URL(`../${path}`, import.meta.url));
 
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
-const CARGO_PACKAGE = "lang-app";
+const CARGO_PACKAGE = "lang";
 
 export function isValidVersion(version) {
   return typeof version === "string" && SEMVER.test(version);

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Tradutor",
+  "productName": "Lang",
   "version": "0.1.0",
   "identifier": "com.yansa.lang-app",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "popup",
-        "title": "Tradutor",
+        "title": "Lang",
         "url": "popup.html",
         "width": 420,
         "height": 200,
