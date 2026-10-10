@@ -16,6 +16,7 @@ import {
 import type { Translation } from "../../lib/types";
 import "../../styles/base.css";
 import ExplainPanel from "./ExplainPanel";
+import langIcon from "../../../assets/icon/lang-icon.svg";
 import PinButton from "./PinButton";
 import ResizeGrips from "./ResizeGrips";
 import TranslationResult from "./TranslationResult";
@@ -161,7 +162,10 @@ export default function PopupApp() {
   return (
     <main ref={popupRef} className="popup">
       <ResizeGrips />
-      <PinButton pinned={pinned} onToggle={togglePin} />
+      <div className="popup__corner">
+        <img className="popup__logo" src={langIcon} alt="Lang" width={14} height={14} />
+        <PinButton pinned={pinned} onToggle={togglePin} />
+      </div>
       <textarea
         ref={inputRef}
         className="popup__input"

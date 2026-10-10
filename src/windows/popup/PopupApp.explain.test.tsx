@@ -120,7 +120,7 @@ describe("PopupApp — Explicar", () => {
     act(() => emit({ kind: "delta", text: "<img src=x onerror=alert(1)> **negrito**" }));
 
     expect(await screen.findByText("<img src=x onerror=alert(1)> **negrito**")).toBeInTheDocument();
-    expect(document.querySelector("img")).toBeNull();
+    expect(document.querySelector('img[src="x"]')).toBeNull();
   });
 
   it("shows an error event and keeps the partial text", async () => {

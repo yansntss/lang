@@ -52,6 +52,14 @@ beforeEach(() => {
 });
 
 describe("PopupApp pin button", () => {
+  it("shows the Lang icon next to the pin button", () => {
+    render(<PopupApp />);
+
+    const logo = screen.getByRole("img", { name: "Lang" });
+    expect(logo.getAttribute("src")).toMatch(/lang-icon\.svg|^data:image\/svg\+xml/);
+    expect(logo.parentElement).toContainElement(pinButton());
+  });
+
   it("starts unpinned", () => {
     render(<PopupApp />);
 

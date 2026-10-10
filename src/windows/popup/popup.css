@@ -13,8 +13,8 @@
   box-sizing: border-box;
   width: 100%;
   padding: 8px;
-  /* Espaço para o botão de fixar no canto. */
-  padding-right: 26px;
+  /* Espaço para o ícone e o botão de fixar no canto. */
+  padding-right: 44px;
   resize: none;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -34,12 +34,26 @@
   overflow-y: auto;
 }
 
-/* Botão de fixar: quase invisível até o mouse chegar perto ou o popup estar fixado. */
-.popup__pin {
+/* Canto do campo: ícone do Lang e botão de fixar, lado a lado. */
+.popup__corner {
   position: absolute;
   top: 14px;
   right: 14px;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* O clique no ícone cai no campo de texto, que mantém o foco. */
+.popup__logo {
+  display: block;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Botão de fixar: quase invisível até o mouse chegar perto ou o popup estar fixado. */
+.popup__pin {
   display: grid;
   place-items: center;
   width: 18px;
