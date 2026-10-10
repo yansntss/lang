@@ -20,7 +20,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 # Só para o tipo `ResizeDirection`, que o crate `tauri` não reexporta; já vem com o `tauri`.
 tauri-runtime = "2"
 serde = { version = "1", features = ["derive"] }

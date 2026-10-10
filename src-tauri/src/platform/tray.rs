@@ -1,6 +1,8 @@
+#[cfg(target_os = "macos")]
+use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
-use tauri::AppHandle;
+use tauri::{AppHandle, Wry};
 
 use super::history_window;
 use super::log_failure;
@@ -66,11 +68,30 @@ pub fn create(app: &AppHandle) -> tauri::Result<TrayIcon> {
             }
         });
 
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
-    }
-
+    builder = with_icon(app, builder)?;
     builder.build(app)
+}
+
+/// No macOS a bandeja usa a versão mono como template: o sistema a pinta conforme o tema.
+#[cfg(target_os = "macos")]
+fn with_icon(
+    _app: &AppHandle,
+    builder: TrayIconBuilder<Wry>,
+) -> tauri::Result<TrayIconBuilder<Wry>> {
+    let icon = Image::from_bytes(include_bytes!("../../icons/tray/tray-template@2x.png"))?;
+    Ok(builder.icon(icon).icon_as_template(true))
+}
+
+/// No Windows e no Linux a bandeja usa o ícone colorido do app.
+#[cfg(not(target_os = "macos"))]
+fn with_icon(
+    app: &AppHandle,
+    builder: TrayIconBuilder<Wry>,
+) -> tauri::Result<TrayIconBuilder<Wry>> {
+    Ok(match app.default_window_icon() {
+        Some(icon) => builder.icon(icon.clone()),
+        None => builder,
+    })
 }
 
 #[cfg(test)]
@@ -84,5 +105,19 @@ mod tests {
             tooltip_for("Ctrl+Alt+T", false),
             "Lang — atalho Ctrl+Alt+T indisponível"
         );
+    }
+
+    #[test]
+    fn the_macos_tray_templates_are_pngs_in_both_densities() {
+        let normal =
+            tauri::image::Image::from_bytes(include_bytes!("../../icons/tray/tray-template.png"))
+                .unwrap();
+        let retina = tauri::image::Image::from_bytes(include_bytes!(
+            "../../icons/tray/tray-template@2x.png"
+        ))
+        .unwrap();
+
+        assert_eq!((normal.width(), normal.height()), (22, 22));
+        assert_eq!((retina.width(), retina.height()), (44, 44));
     }
 }
