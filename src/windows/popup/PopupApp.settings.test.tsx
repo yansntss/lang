@@ -31,6 +31,8 @@ const SETTINGS: SettingsView = {
   portugueseVariant: "PT-BR",
   explainModel: "claude-haiku-5-5",
   captureInEditors: false,
+  captionModeEnabled: false,
+  captionIntervalMs: 1500,
   autoTranslateSelection: true,
 };
 // Um pouco mais que o debounce de 400 ms: se a tradução fosse sair sozinha, já teria saído.

@@ -2,7 +2,9 @@
 
 Atualizado ao fim de cada fase. Marcar `[x]` ao concluir.
 
-## Estado atual (2026-10-08) — retomar daqui
+## Estado atual (2026-10-10) — retomar daqui
+- Fase 3b (captura de região + OCR + legenda ao vivo) **implementada, revisada e testada**, em
+  três commits; falta a verificação manual (checklist na seção da Fase 3b).
 - Fases 0, 1 e 2 concluídas, revisadas, testadas manualmente pelo usuário e commitadas em `main`.
 - Fase 3 (Explicar com Claude) **implementada, revisada e testada com mocks**; falta só a
   verificação manual com uma chave real da Anthropic (o usuário tem apenas DeepL Free). Sem
@@ -20,8 +22,9 @@ Atualizado ao fim de cada fase. Marcar `[x]` ao concluir.
   traduzir a seleção sozinha: ligada). Continua em aberto:
   - Histórico ligado por padrão grava texto selecionado em claro desde o primeiro Enter:
     manter assim, ou mostrar um aviso na primeira gravação / começar desligado.
-- Testes: 246 de Rust (+2 `#[ignore]` que usam o clipboard e o keychain reais:
-  `cargo test -- --ignored`) e 126 do front. `clippy -D warnings` e `fmt --check` limpos.
+- Testes: 377 de Rust (+5 `#[ignore]` que usam o clipboard, o keychain e o OCR reais:
+  `cargo test -- --ignored`; só o OCR: `cargo test --lib services::ocr::windows -- --ignored`)
+  e 213 do front. `clippy -D warnings` e `fmt --check` limpos.
 - Armadilhas de ambiente (também em `CLAUDE.md`): `cargo` fora do PATH do `powershell.exe`,
   git só funciona pelo Windows, e `tauri dev` recompila sozinho a cada alteração.
 
@@ -71,8 +74,12 @@ docs/PLAN.md
 | `explain(text, translation, on_event: Channel)` | 3 |
 | `list_history` / `delete_history` / `clear_history` / `toggle_favorite` / `export_history` | 4 |
 | `get_settings` / `update_settings` / `set_shortcut` | 5 |
+| `set_shortcut(slot, accelerator)` (slot `translate` ou `ocr`) | 3b |
+| `get_region_snapshot` / `confirm_region(selection)` / `cancel_region` (só a janela `region`) | 3b |
+| `start_caption` / `stop_caption` (só o popup) | 3b |
 
-Eventos Rust → front: `popup://prefill`, `popup://reset`.
+Eventos Rust → front: `popup://prefill`, `popup://reset`, `region://show`, `popup://caption`,
+`popup://caption-stopped`.
 
 ## Plugins e crates
 - Plugins: `global-shortcut`, `single-instance`, `clipboard-manager`, `store`, `autostart`, `updater`, `process`, `log`; tray via feature `tray-icon`. Remover `opener`.
@@ -495,6 +502,75 @@ tag fora da `main`, pré-release, documentação de perda/vazamento da chave, De
   (`tauri signer sign` + `latest.json` manual); fica como melhoria.
 - Toolchain do Rust e `windows-latest` não são fixos (reprodutibilidade).
 
+## Fase 3b — Captura de região + OCR (texto de jogos)
+
+Status: implementada em três commits (`feat: select a screen region with an overlay`,
+`feat: read the selected region with the Windows OCR`, `feat: live caption mode for a screen
+region`). Falta a verificação manual.
+
+Fluxo: atalho de OCR (padrão `Ctrl+Alt+Y`, configurável; não pode ser igual ao do tradutor) →
+foto do monitor sob o cursor → janela `region` (opaca, sem borda, sempre no topo, do tamanho do
+monitor) mostra a foto escurecida → o usuário arrasta um retângulo (Esc ou perder o foco
+cancela) → recorte em pixels físicos → OCR numa thread própria → popup fixado ao lado da região
+com o texto (traduzido sozinho conforme a preferência "Traduzir a seleção assim que…").
+
+- [x] Atalho por slot (`ShortcutSlot`), com `apply_shortcut` genérico e rollback. Quem já usava
+  `Ctrl+Alt+Y` no tradutor: o OCR cai para o de fábrica ou para `Ctrl+Alt+Shift+Y`
+  (`without_collision`). O atalho apertado é comparado com o que está **registrado** em memória,
+  não com o arquivo. A dica da bandeja lista os atalhos que o sistema recusou.
+- [x] Captura com `xcap` 0.9 (GDI no Windows; mesmo `windows` 0.62 do app). Só para Windows e
+  macOS: no Linux o xcap puxa PipeWire/XCB, e a captura devolve "não suportado".
+- [x] A foto fica só em memória (`RegionState`), chega à janela de seleção como bytes crus
+  (`ipc::Response`, cabeçalho de 8 bytes + RGBA) e é desenhada num canvas: a CSP não mudou. É
+  descartada ao confirmar, cancelar ou falhar, e o canvas é limpo ao fechar.
+- [x] Geometria pura e testada (`region_geometry.rs`): seleção lógica → física com a escala do
+  monitor, arrasto invertido, recorte nas bordas, monitores com origem negativa, tamanho mínimo
+  (`RegionEmpty`); popup ao lado da região sem cobri-la (abaixo, acima, à direita, à esquerda).
+- [x] Captura toda preta (jogo em tela cheia exclusiva) vira `BlankCapture`, com a orientação de
+  usar janela sem bordas.
+- [x] OCR: trait `OcrEngine`, `OcrService` (upscale 2× quando o menor lado < 300 px, limpeza do
+  texto), Windows = `Windows.Media.Ocr` (WinRT MTA na thread do OCR, BGRA via `DataWriter`,
+  `RecognizeAsync().join()`). Prefere en-US; sem ele, os idiomas do perfil
+  (`TryCreateFromUserProfileLanguages`). macOS (Vision) e Linux (Tesseract) ficam para depois,
+  atrás de `cfg` (`UnsupportedOcr`).
+- [x] O popup abre já na confirmação (o app ainda tem o primeiro plano, então o Windows dá o
+  foco), e o texto chega quando o OCR termina. Só a leitura mais recente aparece (`Generation`).
+- [x] Histórico com origem (`source` = `text` | `ocr`, migração 2, selo "OCR" na lista, coluna
+  `origem` no CSV). Conta como OCR só se o texto confirmado for o lido da tela, sem edição.
+- [x] Legenda ao vivo (desligada por padrão; intervalo de 1 a 5 s nas Configurações, o backend
+  limita a 0,5–10 s): relê a mesma região, `CaptionGate` (impressão digital normalizada, 2
+  leituras iguais seguidas, não repete a última) e só então traduz (ou espera o Enter, se
+  "Traduzir a seleção assim que…" estiver desligada). Para no botão, em qualquer reset ou
+  ocultação do popup, ao ler outra região, ao desligar a opção e após 3 falhas seguidas
+  (captura preta conta como falha). Começar e parar passam pelo mesmo lock da geração: o fim de
+  uma sessão antiga nunca encerra a nova. Durante a legenda o popup fica fora das capturas
+  (`set_content_protected`, que no Windows é `WDA_EXCLUDEFROMCAPTURE`) e volta ao normal ao
+  parar. As falas só entram no histórico se o usuário confirmar (Enter/Explicar).
+- Melhoria futura: a legenda fotografa o monitor inteiro a cada leitura e recorta; capturar só a
+  região (se o xcap expuser isso de forma confiável) reduziria o custo em 4K.
+
+Decisões e achados:
+- Neste PC o Windows só tinha o OCR de **pt-BR** (não o en-US, apesar do sistema em inglês); o
+  de pt-BR leu corretamente o texto em inglês do teste real. Para a melhor precisão em inglês:
+  PowerShell como administrador → `Add-WindowsCapability -Online -Name
+  "Language.OCR~~~en-US~0.0.1.0"`.
+- Janela de seleção opaca com a foto congelada, em vez de transparente: mesma aparência, sem os
+  problemas de transparência do WebView2, e o texto do jogo para de se mexer enquanto se seleciona.
+- Hífen no fim da linha: mantido e colado à próxima palavra (`well-known`); jogos quase nunca
+  hifenizam palavras.
+
+Verificação manual (pendente; `npm run tauri dev`):
+- [ ] `Ctrl+Alt+Y` escurece o monitor sob o cursor; arrastar e soltar abre o popup fixado ao lado
+  da região com o texto lido e traduzido; Esc e clicar em outro app cancelam.
+- [ ] Monitor secundário e escala diferente de 100% (125%, 150%): o recorte pega exatamente o que
+  foi selecionado.
+- [ ] Jogo em janela sem bordas funciona; em tela cheia exclusiva aparece o aviso da captura preta.
+- [ ] Trocar o atalho de OCR nas Configurações; tentar usar o do tradutor mostra o erro.
+- [ ] Legenda ao vivo: ligar nas Configurações, ler uma legenda, "Legenda ao vivo", falas novas
+  traduzidas uma vez cada; "Parar legenda" e Esc encerram; o popup não aparece em prints durante
+  a legenda e volta a aparecer depois.
+- [ ] Histórico mostra o selo "OCR" e o CSV traz a coluna `origem`.
+
 ## Popup redimensionável
 - O popup agora é `resizable` (mínimo 320×140; sem maximizar). O tamanho escolhido pelo usuário
   fica em `settings.json` (`popupSize`, pixels lógicos) e é reaplicado a cada exibição, limitado a
@@ -548,3 +624,9 @@ Status: concluída.
 | Cota DeepL Free (500k caracteres/mês) | Limite de entrada e mensagem clara no erro 456 |
 | SmartScreen em app não assinado | Documentar no README |
 | Prompt injection no "Explicar" | Sem tools, saída só texto |
+| Jogo em tela cheia exclusiva: captura preta e a janela de seleção não aparece por cima | Detectar a captura preta (`BlankCapture`) e orientar o modo janela sem bordas |
+| Anti-cheat (EAC, BattlEye, Vanguard) estranhar o app | Só captura GDI da tela e uma janela própria: sem injeção, sem hook, sem ler memória do jogo. Ainda assim, risco documentado |
+| Pacote de OCR de inglês ausente | Cai para os idiomas do perfil; sem nenhum, `OcrLanguageMissing` com o caminho nas Configurações do Windows |
+| Captura de tela é permissão sensível | Só por atalho do usuário, foto só em memória e só para a janela `region`, nada em disco ou log; o texto lido nunca vai ao log |
+| Legenda gastando a cota do DeepL | Desligada por padrão, `CaptionGate` (hash + estabilidade), intervalo mínimo de 0,5 s, para sozinha após falhas |
+| Wayland (Linux) e permissão de Gravação de Tela (macOS) | Fora do escopo: captura e OCR atrás de `cfg`, com erro claro; Linux exige portal do xdg-desktop, macOS exige pedir a permissão |

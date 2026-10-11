@@ -3,7 +3,7 @@ use tauri::{AppHandle, State};
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::error::AppError;
-use crate::platform::{accelerator, capture_config, shortcut, tray};
+use crate::platform::{accelerator, caption_session, capture_config, shortcut, tray};
 use crate::secrets::SecretKind;
 use crate::services::deepl::Usage;
 use crate::settings::{PreferencesUpdate, Settings, ShortcutSlot};
@@ -54,6 +54,9 @@ pub fn update_settings(
 ) -> Result<SettingsView, AppError> {
     let settings = state.settings.update_preferences(preferences.into())?;
     capture_config::set_allow_editors(settings.preferences.capture_in_editors);
+    if !settings.preferences.caption_mode_enabled {
+        caption_session::stop(&app);
+    }
     Ok(view(&app, settings))
 }
 

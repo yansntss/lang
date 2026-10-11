@@ -30,6 +30,8 @@ const APP_COMMANDS: &[&str] = &[
     "get_region_snapshot",
     "confirm_region",
     "cancel_region",
+    "start_caption",
+    "stop_caption",
     "set_secret",
     "has_secret",
     "delete_secret",

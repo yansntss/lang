@@ -1,7 +1,7 @@
 //! Janela de seleção de região: cobre o monitor sob o cursor com uma foto dele, escurecida, e
 //! o usuário arrasta um retângulo sobre o texto. Esc ou perder o foco cancela.
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::Instant;
@@ -11,11 +11,11 @@ use tauri::{
     WebviewWindow, WebviewWindowBuilder, Window, WindowEvent,
 };
 
+use super::caption_session;
+use super::generation::Generation;
 use super::placement::{should_hide_on_blur, Point, Rect, Size};
 use super::popup_window::{show_beside_region, show_notice};
-use super::region_geometry::{
-    center_of, region_in_snapshot, selection_to_screen, LogicalSelection, MonitorGeometry,
-};
+use super::region_geometry::{center_of, selection_to_screen, LogicalSelection, MonitorGeometry};
 use super::screen_capture::{capture_monitor_at, Snapshot};
 use super::{log_failure, monitor_at, window_error};
 use crate::error::AppError;
@@ -38,22 +38,8 @@ pub struct RegionState {
     /// Segurar o atalho repete `Pressed`; enquanto uma captura roda, os demais são ignorados.
     opening: AtomicBool,
     shown_at: Mutex<Option<Instant>>,
-    reads: ReadGeneration,
-}
-
-/// Numera as leituras de região. Uma leitura só mostra o resultado se ainda for a mais recente:
-/// selecionar outra região antes de o OCR terminar descarta a anterior.
-#[derive(Default)]
-struct ReadGeneration(AtomicU64);
-
-impl ReadGeneration {
-    fn begin(&self) -> u64 {
-        self.0.fetch_add(1, Ordering::SeqCst) + 1
-    }
-
-    fn is_current(&self, generation: u64) -> bool {
-        self.0.load(Ordering::SeqCst) == generation
-    }
+    /// Selecionar outra região antes de o OCR terminar descarta a leitura anterior.
+    reads: Generation,
 }
 
 impl RegionState {
@@ -218,6 +204,8 @@ pub fn confirm(app: &AppHandle, selection: LogicalSelection) -> Result<(), AppEr
         Ok::<_, AppError>((taken, region))
     })?;
     close(app)?;
+    // Uma região nova encerra a legenda da anterior.
+    caption_session::stop(app);
     let generation = state.reads.begin();
     show_beside_region(app, region, None, None)?;
     read_in_background(app.clone(), active, region, generation);
@@ -230,18 +218,7 @@ fn read_in_background(app: AppHandle, active: ActiveRegion, region: Rect, genera
     let spawned = thread::Builder::new()
         .name("region-ocr".into())
         .spawn(move || {
-            let image = {
-                let snapshot = &active.snapshot;
-                let inside = region_in_snapshot(
-                    region,
-                    active.monitor.area,
-                    Size {
-                        width: snapshot.width,
-                        height: snapshot.height,
-                    },
-                );
-                snapshot.crop_gray(inside)
-            };
+            let image = active.snapshot.crop_region(region, active.monitor.area);
             // A captura inteira não é mais necessária: só o recorte segue para o OCR.
             drop(active);
 
@@ -250,7 +227,10 @@ fn read_in_background(app: AppHandle, active: ActiveRegion, region: Rect, genera
                 return;
             }
             let shown = match outcome {
-                Ok(text) => show_beside_region(&app, region, Some(&text), None),
+                Ok(text) => {
+                    caption_session::remember(&app, region, &text);
+                    show_beside_region(&app, region, Some(&text), None)
+                }
                 Err(error) => {
                     log::warn!("falha ao ler o texto da região: {error:?}");
                     show_beside_region(&app, region, Some(""), Some(&error.to_string()))
@@ -294,7 +274,7 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
     }
 }
 
-fn geometry_of(monitor: &Monitor) -> MonitorGeometry {
+pub(super) fn geometry_of(monitor: &Monitor) -> MonitorGeometry {
     let position = monitor.position();
     let size = monitor.size();
     MonitorGeometry {
@@ -309,22 +289,5 @@ fn geometry_of(monitor: &Monitor) -> MonitorGeometry {
             },
         },
         scale: monitor.scale_factor(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn only_the_latest_read_is_current() {
-        let reads = ReadGeneration::default();
-
-        let first = reads.begin();
-        assert!(reads.is_current(first));
-
-        let second = reads.begin();
-        assert!(!reads.is_current(first));
-        assert!(reads.is_current(second));
     }
 }

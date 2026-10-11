@@ -16,7 +16,19 @@ function preferencesOf(view: SettingsView): Preferences {
     explainModel: view.explainModel,
     captureInEditors: view.captureInEditors,
     autoTranslateSelection: view.autoTranslateSelection,
+    captionModeEnabled: view.captionModeEnabled,
+    captionIntervalMs: view.captionIntervalMs,
   };
+}
+
+/** Intervalos oferecidos para reler a legenda (o backend limita qualquer valor a 0,5–10 s). */
+const CAPTION_INTERVALS_MS = [1000, 1500, 2000, 3000, 5000];
+
+/** As opções oferecidas mais o valor salvo, se ele for outro (o arquivo pode ter sido editado). */
+function intervalOptions(saved: number): number[] {
+  return CAPTION_INTERVALS_MS.includes(saved)
+    ? CAPTION_INTERVALS_MS
+    : [...CAPTION_INTERVALS_MS, saved].sort((a, b) => a - b);
 }
 
 /**
@@ -156,6 +168,34 @@ export default function GeneralSection({ settings, onChanged }: GeneralSectionPr
         pode encerrar um comando em execução. Terminais comuns continuam bloqueados.
       </p>
 
+      <label className="settings__check">
+        <input
+          type="checkbox"
+          checked={settings.captionModeEnabled}
+          aria-describedby="caption-hint"
+          onChange={(event) => void change({ captionModeEnabled: event.target.checked })}
+        />
+        Legenda ao vivo depois de ler um trecho da tela
+      </label>
+      <p id="caption-hint" className="settings__hint">
+        Relê a mesma área a cada intervalo e traduz só quando o texto muda. Cada fala nova gasta
+        cota do DeepL.
+      </p>
+
+      <div className="settings__field">
+        <label htmlFor="caption-interval">Intervalo da legenda</label>
+        <select
+          id="caption-interval"
+          value={String(settings.captionIntervalMs)}
+          onChange={(event) => void change({ captionIntervalMs: Number(event.target.value) })}
+        >
+          {intervalOptions(settings.captionIntervalMs).map((milliseconds) => (
+            <option key={milliseconds} value={String(milliseconds)}>
+              {(milliseconds / 1000).toLocaleString("pt-BR")} s
+            </option>
+          ))}
+        </select>
+      </div>
       {error && (
         <p role="alert" className="settings__feedback settings__feedback--error">
           {error}

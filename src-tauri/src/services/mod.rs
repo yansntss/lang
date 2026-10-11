@@ -1,4 +1,5 @@
 pub mod active_explain;
+pub mod caption;
 pub mod capture;
 pub mod claude;
 pub mod deepl;

@@ -1,7 +1,8 @@
 //! Fotografia de um monitor inteiro, para a seleção de região. A imagem fica só na memória:
 //! nunca vai para disco nem para o log.
 
-use super::placement::Rect;
+use super::placement::{Rect, Size};
+use super::region_geometry::region_in_snapshot;
 use crate::error::AppError;
 use crate::services::ocr::GrayImage;
 
@@ -48,6 +49,15 @@ impl Snapshot {
             let pixel = self.rgba.get(index..index + 3).unwrap_or(&[0, 0, 0]);
             image::Luma([luma(pixel[0], pixel[1], pixel[2])])
         })
+    }
+
+    /// A `region` (pixels físicos da tela) em cinza. `monitor` é a área do monitor fotografado.
+    pub fn crop_region(&self, region: Rect, monitor: Rect) -> GrayImage {
+        let size = Size {
+            width: self.width,
+            height: self.height,
+        };
+        self.crop_gray(region_in_snapshot(region, monitor, size))
     }
 
     /// Toda preta: é o que o Windows entrega de um jogo em tela cheia exclusiva. Para no

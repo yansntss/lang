@@ -15,6 +15,10 @@ export interface Preferences {
   captureInEditors: boolean;
   /** Traduzir a seleção capturada assim que o popup abre (senão, só após o Enter). */
   autoTranslateSelection: boolean;
+  /** Oferecer a legenda ao vivo depois de ler um trecho da tela. */
+  captionModeEnabled: boolean;
+  /** Intervalo entre as releituras da legenda, em milissegundos. */
+  captionIntervalMs: number;
 }
 
 /** Qual dos atalhos globais: o do tradutor ou o da leitura de um trecho da tela (OCR). */
@@ -106,6 +110,14 @@ export interface PopupResetPayload {
   notice?: string | null;
   /** De onde veio o texto do `prefill`. Ausente: `text`. */
   source?: HistorySource;
+  /** O texto veio da tela e a legenda ao vivo está ligada. Ausente: `false`. */
+  captionAvailable?: boolean;
+}
+
+/** Corpo do evento `popup://caption`: uma fala nova lida da tela. */
+export interface CaptionLine {
+  text: string;
+  autoTranslate: boolean;
 }
 
 /** Retângulo arrastado na janela de seleção, em pixels da janela (CSS). */

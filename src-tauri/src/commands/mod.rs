@@ -1,3 +1,4 @@
+pub mod caption;
 pub mod explain;
 pub mod history;
 pub mod region;

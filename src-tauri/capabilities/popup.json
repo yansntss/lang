@@ -17,6 +17,8 @@
     "allow-fit-popup-height",
     "allow-set-popup-pinned",
     "allow-start-popup-dragging",
-    "allow-start-popup-resizing"
+    "allow-start-popup-resizing",
+    "allow-start-caption",
+    "allow-stop-caption"
   ]
 }

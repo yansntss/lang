@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCaption } from "../../hooks/useCaption";
 import { useExplain } from "../../hooks/useExplain";
 import { useFitPopupHeight } from "../../hooks/useFitPopupHeight";
 import { useHasSecret } from "../../hooks/useHasSecret";
@@ -38,6 +39,8 @@ export default function PopupApp() {
   // Fixado, o popup não some ao perder o foco, e o Enter copia sem fechar.
   const [pinned, setPinned] = useState(false);
   const [copied, setCopied] = useState(false);
+  // O texto veio da tela e a legenda ao vivo está ligada nas configurações.
+  const [captionAvailable, setCaptionAvailable] = useState(false);
   const result = useTranslate(text, undefined, !held);
   const explanation = useExplain();
   const cancelExplanation = explanation.cancel;
@@ -45,6 +48,21 @@ export default function PopupApp() {
   useTheme();
   useFitPopupHeight(popupRef, resultRef, contentRef);
   useWindowDrag(popupRef);
+
+  // Cada fala nova da legenda ao vivo entra no campo e é traduzida como se tivesse sido lida
+  // agora; Enter a guarda no histórico como texto da tela.
+  const caption = useCaption({
+    onLine: (line, autoTranslate) => {
+      ocrText.current = line.trim();
+      lastRecorded.current = null;
+      setText(line);
+      setHeld(!autoTranslate);
+      setActionError(null);
+      setCopied(false);
+    },
+    onError: setActionError,
+  });
+  const forgetCaption = caption.forget;
 
   // Texto capturado da seleção do usuário (se houver) substitui o que estava no campo, e a
   // tradução começa sozinha pelo mesmo caminho da digitação, a menos que o usuário tenha
@@ -58,6 +76,7 @@ export default function PopupApp() {
       stillPinned: boolean = false,
       notice: string | null = null,
       origin: HistorySource = "text",
+      canCaption: boolean = false,
     ) => {
       // Fixado e sem texto novo: só o aviso. O que o usuário tinha no popup continua lá.
       if (stillPinned && prefill === null && notice !== null) {
@@ -68,6 +87,8 @@ export default function PopupApp() {
       cancelExplanation();
       lastRecorded.current = null;
       ocrText.current = origin === "ocr" && prefill ? prefill.trim() : null;
+      setCaptionAvailable(canCaption);
+      forgetCaption();
       // Seleção em branco não tem o que traduzir: reter só a prenderia em "Enter traduz".
       setHeld(prefill !== null && prefill.trim() !== "" && !autoTranslate);
       setText(prefill ?? "");
@@ -76,7 +97,7 @@ export default function PopupApp() {
       setPinned(stillPinned);
       inputRef.current?.focus();
     },
-    [cancelExplanation],
+    [cancelExplanation, forgetCaption],
   );
 
   const togglePin = () => {
@@ -223,6 +244,19 @@ export default function PopupApp() {
                   Configure a chave da Anthropic em Configurações para usar o Explicar.
                 </p>
               )}
+            </div>
+          )}
+          {captionAvailable && (
+            <div className="popup__caption">
+              <button
+                type="button"
+                className="popup__explain-button"
+                aria-pressed={caption.running}
+                onClick={caption.running ? caption.stop : caption.start}
+              >
+                {caption.running ? "Parar legenda" : "Legenda ao vivo"}
+              </button>
+              {caption.running && <p className="popup__hint">Relendo a mesma área da tela…</p>}
             </div>
           )}
           {copied && <p className="popup__hint">Copiado</p>}

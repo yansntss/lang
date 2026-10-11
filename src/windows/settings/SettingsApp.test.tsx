@@ -41,6 +41,8 @@ const BASE: SettingsView = {
   explainModel: "claude-haiku-5-5",
   captureInEditors: false,
   autoTranslateSelection: true,
+  captionModeEnabled: false,
+  captionIntervalMs: 1500,
 };
 
 const section = (name: string) => screen.getByRole("region", { name });
@@ -471,6 +473,56 @@ describe("SettingsApp — atalho", () => {
   });
 });
 
+describe("SettingsApp — legenda ao vivo", () => {
+  it("starts off, with the default interval", async () => {
+    await renderSettled();
+
+    expect(within(general()).getByLabelText(/Legenda ao vivo/)).not.toBeChecked();
+    expect(within(general()).getByLabelText("Intervalo da legenda")).toHaveValue("1500");
+  });
+
+  it("turns the live caption on", async () => {
+    updateSettings.mockResolvedValue({ ...BASE, captionModeEnabled: true });
+    const user = userEvent.setup();
+    await renderSettled();
+
+    await user.click(within(general()).getByLabelText(/Legenda ao vivo/));
+
+    expect(updateSettings).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ captionModeEnabled: true, captionIntervalMs: 1500 }),
+    );
+    await waitFor(() =>
+      expect(within(general()).getByLabelText(/Legenda ao vivo/)).toBeChecked(),
+    );
+  });
+
+  it("changes how often the caption is read again", async () => {
+    updateSettings.mockResolvedValue({ ...BASE, captionIntervalMs: 3000 });
+    const user = userEvent.setup();
+    await renderSettled();
+
+    await user.selectOptions(within(general()).getByLabelText("Intervalo da legenda"), "3000");
+
+    expect(updateSettings).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ captionIntervalMs: 3000 }),
+    );
+  });
+
+  it("keeps showing a saved interval that is not one of the offered ones", async () => {
+    getSettings.mockResolvedValue({ ...BASE, captionIntervalMs: 1200 });
+
+    await renderSettled();
+
+    expect(within(general()).getByLabelText("Intervalo da legenda")).toHaveValue("1200");
+  });
+
+  it("warns that the live caption uses the DeepL quota", async () => {
+    await renderSettled();
+
+    expect(within(general()).getByText(/cota do DeepL/)).toBeInTheDocument();
+  });
+});
+
 describe("SettingsApp — geral", () => {
   it("shows the saved preferences", async () => {
     getSettings.mockResolvedValue({
@@ -519,6 +571,8 @@ describe("SettingsApp — geral", () => {
       explainModel: "claude-haiku-5-5",
       captureInEditors: false,
       autoTranslateSelection: true,
+      captionModeEnabled: false,
+      captionIntervalMs: 1500,
     });
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
   });
@@ -553,6 +607,8 @@ describe("SettingsApp — geral", () => {
       explainModel: "claude-sonnet-5-5",
       captureInEditors: false,
       autoTranslateSelection: true,
+      captionModeEnabled: false,
+      captionIntervalMs: 1500,
     });
   });
 

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 pub use store::SettingsStore;
 
+use crate::services::caption::DEFAULT_INTERVAL_MS;
 use crate::services::translation::{TargetLang, TargetLangs};
 
 /// Atalho de fábrica; também o que vale quando o salvo é inválido.
@@ -110,6 +111,11 @@ pub struct Preferences {
     pub capture_in_editors: bool,
     /// Traduzir a seleção capturada assim que o popup abre. Desligado: só após o Enter.
     pub auto_translate_selection: bool,
+    /// Oferecer a legenda ao vivo depois de ler um trecho da tela: a mesma região é relida a
+    /// cada `caption_interval_ms` e o texto novo é traduzido. Gasta cota do DeepL.
+    pub caption_mode_enabled: bool,
+    /// Intervalo entre as releituras da legenda; o serviço o limita a uma faixa segura.
+    pub caption_interval_ms: u32,
 }
 
 impl Default for Preferences {
@@ -121,6 +127,8 @@ impl Default for Preferences {
             explain_model: ExplainModel::default(),
             capture_in_editors: false,
             auto_translate_selection: true,
+            caption_mode_enabled: false,
+            caption_interval_ms: DEFAULT_INTERVAL_MS,
         }
     }
 }
@@ -152,6 +160,8 @@ pub struct PreferencesUpdate {
     explain_model: ExplainModel,
     capture_in_editors: bool,
     auto_translate_selection: bool,
+    caption_mode_enabled: bool,
+    caption_interval_ms: u32,
 }
 
 impl From<PreferencesUpdate> for Preferences {
@@ -163,6 +173,8 @@ impl From<PreferencesUpdate> for Preferences {
             explain_model: update.explain_model,
             capture_in_editors: update.capture_in_editors,
             auto_translate_selection: update.auto_translate_selection,
+            caption_mode_enabled: update.caption_mode_enabled,
+            caption_interval_ms: update.caption_interval_ms,
         }
     }
 }
@@ -223,6 +235,8 @@ mod tests {
         assert_eq!(settings.preferences.explain_model, ExplainModel::Haiku);
         assert!(!settings.preferences.capture_in_editors);
         assert!(settings.preferences.auto_translate_selection);
+        assert!(!settings.preferences.caption_mode_enabled);
+        assert_eq!(settings.preferences.caption_interval_ms, 1500);
         assert_eq!(settings.preferences.target_langs(), TargetLangs::default());
     }
 
@@ -257,7 +271,9 @@ mod tests {
                 "portugueseVariant": "PT-BR",
                 "explainModel": "claude-haiku-5-5",
                 "captureInEditors": false,
-                "autoTranslateSelection": true
+                "autoTranslateSelection": true,
+                "captionModeEnabled": false,
+                "captionIntervalMs": 1500
             })
         );
     }
@@ -343,7 +359,9 @@ mod tests {
             "portugueseVariant": "PT-PT",
             "explainModel": "claude-sonnet-5-5",
             "captureInEditors": true,
-            "autoTranslateSelection": false
+            "autoTranslateSelection": false,
+            "captionModeEnabled": true,
+            "captionIntervalMs": 2000
         }))
         .unwrap();
 
@@ -356,6 +374,8 @@ mod tests {
                 explain_model: ExplainModel::Sonnet,
                 capture_in_editors: true,
                 auto_translate_selection: false,
+                caption_mode_enabled: true,
+                caption_interval_ms: 2000,
             }
         );
     }

@@ -13,6 +13,7 @@ interface PopupLifecycleHandlers {
     pinned?: boolean,
     notice?: string | null,
     source?: HistorySource,
+    captionAvailable?: boolean,
   ) => void;
   onError: (message: string) => void;
 }
@@ -28,8 +29,8 @@ export function usePopupLifecycle({ onReset, onError }: PopupLifecycleHandlers):
     let disposed = false;
     let stopListening: (() => void) | undefined;
 
-    onPopupReset((prefill, autoTranslate, pinned, notice, source) =>
-      handlers.current.onReset(prefill, autoTranslate, pinned, notice, source),
+    onPopupReset((prefill, autoTranslate, pinned, notice, source, captionAvailable) =>
+      handlers.current.onReset(prefill, autoTranslate, pinned, notice, source, captionAvailable),
     ).then(
       (stop) => {
         if (disposed) {

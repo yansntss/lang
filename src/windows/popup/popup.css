@@ -208,3 +208,15 @@
   word-break: break-word;
   user-select: text;
 }
+
+/* Legenda ao vivo: o botão fica logo abaixo da tradução, como o Explicar. */
+.popup__caption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.popup__caption .popup__hint {
+  margin: 0;
+}

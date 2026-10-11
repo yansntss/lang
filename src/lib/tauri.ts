@@ -2,6 +2,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type {
   AvailableUpdate,
+  CaptionLine,
   ExplainEvent,
   HistoryEntry,
   HistoryRecord,
@@ -23,6 +24,8 @@ import type {
 
 export const POPUP_RESET_EVENT = "popup://reset";
 export const REGION_SHOW_EVENT = "region://show";
+export const CAPTION_EVENT = "popup://caption";
+export const CAPTION_STOPPED_EVENT = "popup://caption-stopped";
 
 const FALLBACK_ERROR_MESSAGE = "Algo deu errado. Tente novamente.";
 
@@ -187,6 +190,7 @@ export function onPopupReset(
     pinned?: boolean,
     notice?: string | null,
     source?: HistorySource,
+    captionAvailable?: boolean,
   ) => void,
 ): Promise<() => void> {
   return listen<PopupResetPayload>(POPUP_RESET_EVENT, (event) =>
@@ -196,8 +200,35 @@ export function onPopupReset(
       event.payload.pinned ?? false,
       event.payload.notice ?? null,
       event.payload.source ?? "text",
+      event.payload.captionAvailable ?? false,
     ),
   );
+}
+
+/** Liga a legenda ao vivo sobre a última região lida da tela. */
+export function startCaption(): Promise<void> {
+  return invoke<void>("start_caption");
+}
+
+export function stopCaption(): Promise<void> {
+  return invoke<void>("stop_caption");
+}
+
+/**
+ * Cada fala nova lida pela legenda ao vivo. `autoTranslate` segue a preferência "Traduzir a
+ * seleção assim que…": desligada, a fala espera o Enter.
+ */
+export function onCaption(
+  handler: (text: string, autoTranslate: boolean) => void,
+): Promise<() => void> {
+  return listen<CaptionLine>(CAPTION_EVENT, (event) =>
+    handler(event.payload.text, event.payload.autoTranslate),
+  );
+}
+
+/** A legenda parou sozinha, depois de falhas seguidas; `notice` diz por quê. */
+export function onCaptionStopped(handler: (notice: string) => void): Promise<() => void> {
+  return listen<string>(CAPTION_STOPPED_EVENT, (event) => handler(event.payload));
 }
 
 /** Bytes do cabeçalho da captura: largura e altura, `u32` little-endian. */

@@ -8,6 +8,7 @@ use tauri::{
     WebviewWindow, Window, WindowEvent,
 };
 
+use super::caption_session;
 use super::placement::{
     clamp_into_area, place_near_cursor, should_hide_on_blur, should_hide_unfocused, Point, Rect,
     Size, BLUR_GRACE,
@@ -38,6 +39,8 @@ struct ResetPayload<'a> {
     pinned: bool,
     notice: Option<&'a str>,
     source: HistorySource,
+    /// O texto veio da tela e a legenda ao vivo está ligada nas configurações.
+    caption_available: bool,
 }
 const CURSOR_OFFSET_LOGICAL: f64 = 12.0;
 /// Logo depois de exibir, o app mexe no tamanho e na posição da janela; esses `Resized`
@@ -225,10 +228,17 @@ fn emit_reset(
     notice: Option<&str>,
     source: HistorySource,
 ) -> Result<(), AppError> {
+    // Um conteúdo novo no popup substitui a legenda: sem isso ela continuaria trocando o texto
+    // sem um botão para pará-la.
+    caption_session::stop(app);
     // Sem o estado ainda (uma segunda instância muito cedo), mantém o comportamento de fábrica.
-    let auto_translate = app
+    let preferences = app
         .try_state::<AppState>()
-        .is_none_or(|state| state.settings.get().preferences.auto_translate_selection);
+        .map(|state| state.settings.get().preferences);
+    let auto_translate = preferences.is_none_or(|preferences| preferences.auto_translate_selection);
+    let read_text = source == HistorySource::Ocr && prefill.is_some_and(|text| !text.is_empty());
+    let caption_available =
+        read_text && preferences.is_some_and(|preferences| preferences.caption_mode_enabled);
     app.emit_to(
         POPUP_LABEL,
         EVENT_RESET,
@@ -238,6 +248,7 @@ fn emit_reset(
             pinned,
             notice,
             source,
+            caption_available,
         },
     )
     .map_err(window_error)
@@ -261,6 +272,8 @@ pub fn set_interacting(app: &AppHandle, interacting: bool) {
 /// Antes de ocultar: grava o tamanho escolhido e solta o popup, que volta a abrir perto do
 /// cursor na próxima vez.
 pub fn prepare_to_hide(app: &AppHandle) {
+    // Ninguém veria a legenda: ela gastaria cota à toa.
+    caption_session::stop(app);
     set_pinned(app, false);
     save_size_if_changed(app);
 }
@@ -501,12 +514,13 @@ mod tests {
             pinned: false,
             notice: None,
             source: HistorySource::Text,
+            caption_available: false,
         })
         .unwrap();
 
         assert_eq!(
             json,
-            r#"{"prefill":"olá mundo","autoTranslate":true,"pinned":false,"notice":null,"source":"text"}"#
+            r#"{"prefill":"olá mundo","autoTranslate":true,"pinned":false,"notice":null,"source":"text","captionAvailable":false}"#
         );
     }
 
@@ -518,12 +532,13 @@ mod tests {
             pinned: false,
             notice: None,
             source: HistorySource::Text,
+            caption_available: false,
         })
         .unwrap();
 
         assert_eq!(
             json,
-            r#"{"prefill":null,"autoTranslate":false,"pinned":false,"notice":null,"source":"text"}"#
+            r#"{"prefill":null,"autoTranslate":false,"pinned":false,"notice":null,"source":"text","captionAvailable":false}"#
         );
     }
 
@@ -535,6 +550,7 @@ mod tests {
             pinned: true,
             notice: None,
             source: HistorySource::Text,
+            caption_available: false,
         })
         .unwrap();
 
@@ -549,10 +565,12 @@ mod tests {
             pinned: true,
             notice: None,
             source: HistorySource::Ocr,
+            caption_available: true,
         })
         .unwrap();
 
         assert_eq!(json["source"], serde_json::json!("ocr"));
+        assert_eq!(json["captionAvailable"], serde_json::json!(true));
     }
 
     #[test]
@@ -563,6 +581,7 @@ mod tests {
             pinned: false,
             notice: Some("A captura da tela veio preta."),
             source: HistorySource::Text,
+            caption_available: false,
         })
         .unwrap();
 

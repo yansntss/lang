@@ -3,7 +3,9 @@ use crate::error::AppError;
 use crate::services::capture::CaptureOutcome;
 
 pub mod accelerator;
+pub mod caption_session;
 pub mod capture_config;
+pub mod generation;
 pub mod history_window;
 pub mod placement;
 pub mod popup_drag;

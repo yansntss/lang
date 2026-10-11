@@ -1,5 +1,6 @@
 use tauri::Manager;
 
+use platform::caption_session::CaptionState;
 use platform::popup_window::{self, show_near_cursor, PopupState};
 use platform::region_window::{self, RegionState};
 use platform::{capture_config, log_failure, settings_window, shortcut, tray};
@@ -41,6 +42,7 @@ pub fn run() -> tauri::Result<()> {
         .plugin(shortcut::plugin())
         .manage(PopupState::default())
         .manage(RegionState::default())
+        .manage(CaptionState::default())
         .setup(setup)
         .on_window_event(|window, event| {
             popup_window::handle_window_event(window, event);
@@ -69,6 +71,8 @@ pub fn run() -> tauri::Result<()> {
             commands::region::get_region_snapshot,
             commands::region::confirm_region,
             commands::region::cancel_region,
+            commands::caption::start_caption,
+            commands::caption::stop_caption,
             commands::secrets::set_secret,
             commands::secrets::has_secret,
             commands::secrets::delete_secret,
