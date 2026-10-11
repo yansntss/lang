@@ -86,6 +86,40 @@ fn offset(origin: i32, distance: u32) -> i32 {
     origin.saturating_add(i32::try_from(distance).unwrap_or(i32::MAX))
 }
 
+/// A região (pixels físicos da tela) em pixels da captura do monitor. Em geral os dois são o
+/// mesmo; se a captura veio em outra resolução, a região é reescalada para ela.
+pub fn region_in_snapshot(region: Rect, monitor: Rect, snapshot: Size) -> Rect {
+    let axis = |position: i32, length: u32, origin: i32, monitor_length: u32, image: u32| {
+        let ratio = if monitor_length == 0 {
+            1.0
+        } else {
+            f64::from(image) / f64::from(monitor_length)
+        };
+        let start = (f64::from(position) - f64::from(origin)) * ratio;
+        let scaled = f64::from(length) * ratio;
+        // Valores dentro da captura (ou perto dela); `crop_gray` recorta o que sobrar.
+        (start.round() as i32, scaled.round() as u32)
+    };
+    let (x, width) = axis(
+        region.origin.x,
+        region.size.width,
+        monitor.origin.x,
+        monitor.size.width,
+        snapshot.width,
+    );
+    let (y, height) = axis(
+        region.origin.y,
+        region.size.height,
+        monitor.origin.y,
+        monitor.size.height,
+        snapshot.height,
+    );
+    Rect {
+        origin: Point { x, y },
+        size: Size { width, height },
+    }
+}
+
 /// O centro do retângulo (arredondado para baixo).
 pub fn center_of(rect: Rect) -> Point {
     let half = |length: u32| i32::try_from(length / 2).unwrap_or(i32::MAX);
@@ -296,6 +330,38 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error.code(), "invalid_input");
+    }
+
+    #[test]
+    fn a_region_becomes_relative_to_the_monitor_capture() {
+        let monitor = rect(-1920, 0, 1920, 1080);
+
+        let inside = region_in_snapshot(
+            rect(-1820, 900, 600, 80),
+            monitor,
+            Size {
+                width: 1920,
+                height: 1080,
+            },
+        );
+
+        assert_eq!(inside, rect(100, 900, 600, 80));
+    }
+
+    #[test]
+    fn a_capture_in_another_resolution_gets_the_region_rescaled() {
+        let monitor = rect(0, 0, 3840, 2160);
+
+        let inside = region_in_snapshot(
+            rect(200, 100, 600, 80),
+            monitor,
+            Size {
+                width: 1920,
+                height: 1080,
+            },
+        );
+
+        assert_eq!(inside, rect(100, 50, 300, 40));
     }
 
     #[test]

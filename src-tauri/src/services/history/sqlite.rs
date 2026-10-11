@@ -6,7 +6,7 @@ use rusqlite::functions::FunctionFlags;
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use super::migrations::migrate;
-use super::{HistoryEntry, ListQuery, NewEntry, MAX_ENTRIES, PAGE_SIZE};
+use super::{HistoryEntry, HistorySource, ListQuery, NewEntry, MAX_ENTRIES, PAGE_SIZE};
 use crate::error::AppError;
 use crate::services::explain::MAX_TRANSLATION_CHARS;
 use crate::services::translation::MAX_INPUT_CHARS;
@@ -22,7 +22,7 @@ const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const TARGET_LANGS: [&str; 4] = ["PT-BR", "PT-PT", "EN-US", "EN-GB"];
 
 const COLUMNS: &str = "id, source_text, translated_text, source_lang, target_lang, favorite, \
-                       created_at, last_used_at, use_count, last_reviewed_at";
+                       created_at, last_used_at, use_count, last_reviewed_at, source";
 
 type Clock = Box<dyn Fn() -> i64 + Send + Sync>;
 
@@ -98,19 +98,21 @@ impl SqliteHistory {
         transaction
             .execute(
                 "INSERT INTO history (source_text, translated_text, source_lang, target_lang, \
-                                  created_at, last_used_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+                                  created_at, last_used_at, source)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?6)
              ON CONFLICT (source_text, target_lang) DO UPDATE SET
                  translated_text = excluded.translated_text,
                  source_lang     = excluded.source_lang,
                  last_used_at    = excluded.last_used_at,
-                 use_count       = use_count + 1",
+                 use_count       = use_count + 1,
+                 source          = excluded.source",
                 params![
                     valid.source_text,
                     valid.translated_text,
                     valid.source_lang,
                     valid.target_lang,
-                    now
+                    now,
+                    valid.source.as_str()
                 ],
             )
             .map_err(db_error)?;
@@ -277,6 +279,7 @@ fn map_row(row: &Row<'_>) -> rusqlite::Result<HistoryEntry> {
         last_used_at: row.get(7)?,
         use_count: row.get(8)?,
         last_reviewed_at: row.get(9)?,
+        source: HistorySource::from_db(&row.get::<_, String>(10)?),
     })
 }
 
@@ -364,6 +367,7 @@ fn validate<'a>(entry: &NewEntry<'a>) -> Result<NewEntry<'a>, AppError> {
         translated_text,
         source_lang,
         target_lang: entry.target_lang,
+        source: entry.source,
     })
 }
 
@@ -435,6 +439,7 @@ mod tests {
             translated_text: translation,
             source_lang: "EN",
             target_lang: "PT-BR",
+            source: HistorySource::Text,
         }
     }
 
@@ -457,8 +462,47 @@ mod tests {
                 last_used_at: 5_000,
                 use_count: 1,
                 last_reviewed_at: None,
+                source: HistorySource::Text,
             }]
         );
+    }
+
+    #[test]
+    fn remembers_whether_the_text_was_read_from_the_screen() {
+        let fixture = Fixture::new();
+
+        fixture
+            .history
+            .record(&NewEntry {
+                source: HistorySource::Ocr,
+                ..entry("Press any key", "Aperte qualquer tecla")
+            })
+            .unwrap();
+
+        assert_eq!(fixture.list()[0].source, HistorySource::Ocr);
+    }
+
+    #[test]
+    fn using_the_same_text_again_keeps_the_latest_source() {
+        let fixture = Fixture::new();
+        fixture
+            .history
+            .record(&NewEntry {
+                source: HistorySource::Ocr,
+                ..entry("hello", "olá")
+            })
+            .unwrap();
+
+        fixture.record("hello", "olá");
+
+        assert_eq!(fixture.list()[0].source, HistorySource::Text);
+    }
+
+    #[test]
+    fn an_unknown_source_in_the_database_reads_as_text() {
+        assert_eq!(HistorySource::from_db("ocr"), HistorySource::Ocr);
+        assert_eq!(HistorySource::from_db("text"), HistorySource::Text);
+        assert_eq!(HistorySource::from_db("???"), HistorySource::Text);
     }
 
     #[test]
@@ -498,6 +542,7 @@ mod tests {
                 translated_text: "pão",
                 source_lang: "FR",
                 target_lang: "EN-US",
+                source: HistorySource::Text,
             })
             .unwrap();
 

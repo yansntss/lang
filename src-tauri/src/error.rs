@@ -61,6 +61,18 @@ pub enum AppError {
     #[error("Selecione uma área maior, que contenha o texto.")]
     RegionEmpty,
 
+    #[error(
+        "O Windows não tem nenhum idioma de reconhecimento de texto (OCR). Adicione o Inglês \
+         (Estados Unidos) em Configurações > Hora e idioma > Idioma e região."
+    )]
+    OcrLanguageMissing,
+
+    #[error("Não foi possível ler o texto da imagem.")]
+    Ocr(String),
+
+    #[error("Nenhum texto encontrado na área selecionada.")]
+    NoTextFound,
+
     #[error("Não foi possível acessar o histórico.")]
     History(String),
 
@@ -89,6 +101,9 @@ impl AppError {
             Self::ScreenCapture(_) => "screen_capture",
             Self::BlankCapture => "blank_capture",
             Self::RegionEmpty => "region_empty",
+            Self::OcrLanguageMissing => "ocr_language_missing",
+            Self::Ocr(_) => "ocr",
+            Self::NoTextFound => "no_text_found",
             Self::History(_) => "history",
             Self::Settings(_) => "settings",
             Self::Update(_) => "update",
@@ -203,6 +218,11 @@ mod tests {
                 AppError::Capture("SendInput: acesso negado".into()),
                 "capture",
                 "Não foi possível capturar o texto selecionado.",
+            ),
+            (
+                AppError::Ocr("RecognizeAsync: 0x80004005".into()),
+                "ocr",
+                "Não foi possível ler o texto da imagem.",
             ),
             (
                 AppError::ScreenCapture("BitBlt falhou: HWND 0x5".into()),

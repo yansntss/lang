@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager, State};
 
 use crate::error::AppError;
-use crate::services::history::{csv, now_ms, HistoryEntry, ListQuery, NewEntry, SqliteHistory};
+use crate::services::history::{
+    csv, now_ms, HistoryEntry, HistorySource, ListQuery, NewEntry, SqliteHistory,
+};
 use crate::state::AppState;
 
 /// Roda `work` fora da thread da interface: o SQLite faz E/S de disco.
@@ -50,6 +52,7 @@ pub async fn record_history(
     translated_text: String,
     source_lang: String,
     target_lang: String,
+    source: HistorySource,
 ) -> Result<(), AppError> {
     blocking(&state, move |history| {
         history.record(&NewEntry {
@@ -57,6 +60,7 @@ pub async fn record_history(
             translated_text: &translated_text,
             source_lang: &source_lang,
             target_lang: &target_lang,
+            source,
         })
     })
     .await

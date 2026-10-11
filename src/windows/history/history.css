@@ -94,3 +94,15 @@
   margin: 0;
   color: var(--danger);
 }
+
+/* Texto lido de uma região da tela (OCR). */
+.history__badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}

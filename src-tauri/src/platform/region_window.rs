@@ -1,7 +1,7 @@
 //! Janela de seleção de região: cobre o monitor sob o cursor com uma foto dele, escurecida, e
 //! o usuário arrasta um retângulo sobre o texto. Esc ou perder o foco cancela.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::Instant;
@@ -13,10 +13,13 @@ use tauri::{
 
 use super::placement::{should_hide_on_blur, Point, Rect, Size};
 use super::popup_window::{show_beside_region, show_notice};
-use super::region_geometry::{center_of, selection_to_screen, LogicalSelection, MonitorGeometry};
+use super::region_geometry::{
+    center_of, region_in_snapshot, selection_to_screen, LogicalSelection, MonitorGeometry,
+};
 use super::screen_capture::{capture_monitor_at, Snapshot};
 use super::{log_failure, monitor_at, window_error};
 use crate::error::AppError;
+use crate::state::AppState;
 
 pub const REGION_LABEL: &str = "region";
 /// Enviado à janela de seleção a cada abertura: buscar a captura nova e limpar a seleção.
@@ -35,6 +38,22 @@ pub struct RegionState {
     /// Segurar o atalho repete `Pressed`; enquanto uma captura roda, os demais são ignorados.
     opening: AtomicBool,
     shown_at: Mutex<Option<Instant>>,
+    reads: ReadGeneration,
+}
+
+/// Numera as leituras de região. Uma leitura só mostra o resultado se ainda for a mais recente:
+/// selecionar outra região antes de o OCR terminar descarta a anterior.
+#[derive(Default)]
+struct ReadGeneration(AtomicU64);
+
+impl ReadGeneration {
+    fn begin(&self) -> u64 {
+        self.0.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    fn is_current(&self, generation: u64) -> bool {
+        self.0.load(Ordering::SeqCst) == generation
+    }
 }
 
 impl RegionState {
@@ -47,10 +66,6 @@ impl RegionState {
     /// A captura no formato que a janela de seleção desenha.
     pub fn encoded_snapshot(&self) -> Option<Vec<u8>> {
         self.with_active(|active| active.as_ref().map(|region| region.snapshot.encode()))
-    }
-
-    fn monitor(&self) -> Option<MonitorGeometry> {
-        self.with_active(|active| active.as_ref().map(|region| region.monitor))
     }
 
     fn mark_shown(&self) {
@@ -184,17 +199,69 @@ fn region_window(app: &AppHandle) -> Result<WebviewWindow, AppError> {
         .map_err(window_error)
 }
 
-/// O usuário soltou o mouse: converte a seleção em pixels da tela, fecha a janela de seleção
-/// e abre o popup fixado ao lado da região. Uma seleção recusada deixa a janela aberta, para
-/// o usuário tentar de novo.
+/// O usuário soltou o mouse: converte a seleção em pixels da tela, fecha a janela de seleção e
+/// abre o popup fixado ao lado da região já agora, enquanto o app ainda tem o primeiro plano (o
+/// Windows recusaria o foco depois). O texto chega quando o OCR, fora da thread da interface,
+/// termina. Uma seleção recusada deixa a janela aberta, para o usuário tentar de novo.
 pub fn confirm(app: &AppHandle, selection: LogicalSelection) -> Result<(), AppError> {
-    let monitor = app
-        .state::<RegionState>()
-        .monitor()
-        .ok_or_else(|| AppError::InvalidInput("Nenhuma seleção em andamento.".into()))?;
-    let region = selection_to_screen(selection, monitor)?;
+    let state = app.state::<RegionState>();
+    let (active, region) = state.with_active(|active| {
+        let monitor = active
+            .as_ref()
+            .ok_or_else(|| AppError::InvalidInput("Nenhuma seleção em andamento.".into()))?
+            .monitor;
+        let region = selection_to_screen(selection, monitor)?;
+        // Só sai do estado se a seleção valeu: recusada, a captura continua para outra tentativa.
+        let taken = active
+            .take()
+            .ok_or_else(|| AppError::InvalidInput("Nenhuma seleção em andamento.".into()))?;
+        Ok::<_, AppError>((taken, region))
+    })?;
     close(app)?;
-    show_beside_region(app, region, None)
+    let generation = state.reads.begin();
+    show_beside_region(app, region, None, None)?;
+    read_in_background(app.clone(), active, region, generation);
+    Ok(())
+}
+
+/// Recorta a região da captura, roda o OCR e entrega ao popup o texto, ou o motivo da falha.
+/// O texto lido nunca vai para o log.
+fn read_in_background(app: AppHandle, active: ActiveRegion, region: Rect, generation: u64) {
+    let spawned = thread::Builder::new()
+        .name("region-ocr".into())
+        .spawn(move || {
+            let image = {
+                let snapshot = &active.snapshot;
+                let inside = region_in_snapshot(
+                    region,
+                    active.monitor.area,
+                    Size {
+                        width: snapshot.width,
+                        height: snapshot.height,
+                    },
+                );
+                snapshot.crop_gray(inside)
+            };
+            // A captura inteira não é mais necessária: só o recorte segue para o OCR.
+            drop(active);
+
+            let outcome = app.state::<AppState>().ocr.read(&image);
+            if !app.state::<RegionState>().reads.is_current(generation) {
+                return;
+            }
+            let shown = match outcome {
+                Ok(text) => show_beside_region(&app, region, Some(&text), None),
+                Err(error) => {
+                    log::warn!("falha ao ler o texto da região: {error:?}");
+                    show_beside_region(&app, region, Some(""), Some(&error.to_string()))
+                }
+            };
+            log_failure("mostrar o texto lido da região", shown);
+        });
+
+    if let Err(error) = spawned {
+        log::error!("não foi possível iniciar o OCR: {error}");
+    }
 }
 
 /// Descarta a captura e oculta a janela de seleção.
@@ -242,5 +309,22 @@ fn geometry_of(monitor: &Monitor) -> MonitorGeometry {
             },
         },
         scale: monitor.scale_factor(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_latest_read_is_current() {
+        let reads = ReadGeneration::default();
+
+        let first = reads.begin();
+        assert!(reads.is_current(first));
+
+        let second = reads.begin();
+        assert!(!reads.is_current(first));
+        assert!(reads.is_current(second));
     }
 }

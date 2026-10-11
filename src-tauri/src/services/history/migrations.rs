@@ -5,7 +5,8 @@ use crate::error::AppError;
 
 /// Cada item leva o banco da versão `índice` para `índice + 1` (`PRAGMA user_version`).
 /// Nunca edite uma migração já lançada: acrescente outra.
-const MIGRATIONS: &[&str] = &["
+const MIGRATIONS: &[&str] = &[
+    "
 CREATE TABLE history (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     source_text      TEXT    NOT NULL,
@@ -24,7 +25,11 @@ CREATE TABLE preferences (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
-"];
+",
+    "
+ALTER TABLE history ADD COLUMN source TEXT NOT NULL DEFAULT 'text';
+",
+];
 
 pub fn latest_version() -> u32 {
     u32::try_from(MIGRATIONS.len()).unwrap_or(u32::MAX)
@@ -95,6 +100,28 @@ mod tests {
 
         migrate(&mut conn).unwrap();
 
+        assert_eq!(count(&conn, "history"), 1);
+        assert_eq!(version(&conn), latest_version());
+    }
+
+    #[test]
+    fn a_version_1_database_keeps_its_rows_and_marks_them_as_text() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(MIGRATIONS[0]).unwrap();
+        conn.execute_batch("PRAGMA user_version = 1").unwrap();
+        conn.execute(
+            "INSERT INTO history (source_text, translated_text, source_lang, target_lang, \
+             created_at, last_used_at) VALUES ('a', 'b', 'EN', 'PT-BR', 1, 1)",
+            [],
+        )
+        .unwrap();
+
+        migrate(&mut conn).unwrap();
+
+        let source: String = conn
+            .query_row("SELECT source FROM history", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(source, "text");
         assert_eq!(count(&conn, "history"), 1);
         assert_eq!(version(&conn), latest_version());
     }

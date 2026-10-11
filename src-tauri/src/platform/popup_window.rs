@@ -18,6 +18,7 @@ use super::popup_size::{
 use super::region_geometry::{center_of, place_beside_region};
 use super::{monitor_at, window_error};
 use crate::error::AppError;
+use crate::services::history::HistorySource;
 use crate::settings::PopupSize;
 use crate::state::AppState;
 
@@ -27,8 +28,8 @@ pub const EVENT_RESET: &str = "popup://reset";
 
 /// Corpo do evento `popup://reset`. `prefill` é o texto capturado da seleção do usuário,
 /// `auto_translate` diz se ele deve ser traduzido sozinho ou só depois do Enter, `pinned` se
-/// o popup continua fixado na tela, e `notice` um aviso a mostrar (por exemplo, a captura da
-/// tela falhou).
+/// o popup continua fixado na tela, `notice` um aviso a mostrar (por exemplo, a captura da
+/// tela falhou) e `source` de onde veio o texto, para o histórico.
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ResetPayload<'a> {
@@ -36,6 +37,7 @@ struct ResetPayload<'a> {
     auto_translate: bool,
     pinned: bool,
     notice: Option<&'a str>,
+    source: HistorySource,
 }
 const CURSOR_OFFSET_LOGICAL: f64 = 12.0;
 /// Logo depois de exibir, o app mexe no tamanho e na posição da janela; esses `Resized`
@@ -134,7 +136,7 @@ fn show_near_cursor_with(
     // texto capturado (se houver; senão mantém o que estava no campo) e o foco.
     if window.is_visible().map_err(window_error)? && app.state::<PopupState>().is_pinned() {
         if prefill.is_some() || notice.is_some() {
-            emit_reset(app, prefill, true, notice)?;
+            emit_reset(app, prefill, true, notice, HistorySource::Text)?;
         }
         return window.set_focus().map_err(window_error);
     }
@@ -172,19 +174,21 @@ fn show_near_cursor_with(
             .map_err(window_error)?;
     }
 
-    emit_reset(app, prefill, false, notice)?;
+    emit_reset(app, prefill, false, notice, HistorySource::Text)?;
     window.show().map_err(window_error)?;
     let focus_result = window.set_focus().map_err(window_error);
     hide_if_still_unfocused(window);
     focus_result
 }
 
-/// Abre o popup fixado ao lado de `region` (pixels físicos da tela), sem cobri-la: o texto
-/// lido da tela continua visível, e uma nova leitura da mesma região não pega o popup.
+/// Abre o popup fixado ao lado de `region` (pixels físicos da tela), sem cobri-la, com o texto
+/// lido dela (`prefill`) ou com um aviso. O texto da tela continua visível, e uma nova leitura
+/// da mesma região não pega o popup.
 pub fn show_beside_region(
     app: &AppHandle,
     region: Rect,
     prefill: Option<&str>,
+    notice: Option<&str>,
 ) -> Result<(), AppError> {
     let window = popup_window(app)?;
     let monitor = monitor_at(app, center_of(region))?;
@@ -209,7 +213,7 @@ pub fn show_beside_region(
 
     // Fixa só agora: se algo acima falhou, o popup não fica fixado sem ter aparecido.
     set_pinned(app, true);
-    emit_reset(app, prefill, true, None)?;
+    emit_reset(app, prefill, true, notice, HistorySource::Ocr)?;
     window.show().map_err(window_error)?;
     window.set_focus().map_err(window_error)
 }
@@ -219,6 +223,7 @@ fn emit_reset(
     prefill: Option<&str>,
     pinned: bool,
     notice: Option<&str>,
+    source: HistorySource,
 ) -> Result<(), AppError> {
     // Sem o estado ainda (uma segunda instância muito cedo), mantém o comportamento de fábrica.
     let auto_translate = app
@@ -232,6 +237,7 @@ fn emit_reset(
             auto_translate,
             pinned,
             notice,
+            source,
         },
     )
     .map_err(window_error)
@@ -494,12 +500,13 @@ mod tests {
             auto_translate: true,
             pinned: false,
             notice: None,
+            source: HistorySource::Text,
         })
         .unwrap();
 
         assert_eq!(
             json,
-            r#"{"prefill":"olá mundo","autoTranslate":true,"pinned":false,"notice":null}"#
+            r#"{"prefill":"olá mundo","autoTranslate":true,"pinned":false,"notice":null,"source":"text"}"#
         );
     }
 
@@ -510,12 +517,13 @@ mod tests {
             auto_translate: false,
             pinned: false,
             notice: None,
+            source: HistorySource::Text,
         })
         .unwrap();
 
         assert_eq!(
             json,
-            r#"{"prefill":null,"autoTranslate":false,"pinned":false,"notice":null}"#
+            r#"{"prefill":null,"autoTranslate":false,"pinned":false,"notice":null,"source":"text"}"#
         );
     }
 
@@ -526,10 +534,25 @@ mod tests {
             auto_translate: true,
             pinned: true,
             notice: None,
+            source: HistorySource::Text,
         })
         .unwrap();
 
         assert_eq!(json["pinned"], serde_json::json!(true));
+    }
+
+    #[test]
+    fn reset_payload_says_when_the_text_was_read_from_the_screen() {
+        let json = serde_json::to_value(ResetPayload {
+            prefill: Some("Press any key"),
+            auto_translate: true,
+            pinned: true,
+            notice: None,
+            source: HistorySource::Ocr,
+        })
+        .unwrap();
+
+        assert_eq!(json["source"], serde_json::json!("ocr"));
     }
 
     #[test]
@@ -539,6 +562,7 @@ mod tests {
             auto_translate: true,
             pinned: false,
             notice: Some("A captura da tela veio preta."),
+            source: HistorySource::Text,
         })
         .unwrap();
 

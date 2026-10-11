@@ -47,6 +47,7 @@ function entry(id: number, overrides: Partial<HistoryEntry> = {}): HistoryEntry 
     lastUsedAt: 1_700_000_000_000,
     useCount: 1,
     lastReviewedAt: null,
+    source: "text",
     ...overrides,
   };
 }
@@ -64,6 +65,21 @@ beforeEach(() => {
   nextReview.mockReset().mockResolvedValue(null);
   markReviewed.mockReset().mockResolvedValue(undefined);
   copyToClipboard.mockReset().mockResolvedValue(undefined);
+});
+
+describe("HistoryApp — origem", () => {
+  it("marks the translations whose text was read from the screen", async () => {
+    vi.mocked(tauri.listHistory).mockResolvedValue([
+      entry(1, { sourceText: "Press any key", source: "ocr" }),
+      entry(2, { sourceText: "typed text" }),
+    ]);
+
+    render(<HistoryApp />);
+
+    const items = await screen.findAllByRole("listitem");
+    expect(within(items[0]).getByText("OCR")).toBeInTheDocument();
+    expect(within(items[1]).queryByText("OCR")).not.toBeInTheDocument();
+  });
 });
 
 describe("HistoryApp — lista", () => {

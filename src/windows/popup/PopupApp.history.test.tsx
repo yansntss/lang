@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as tauri from "../../lib/tauri";
@@ -30,6 +30,7 @@ const RECORD = {
   translatedText: "olá",
   sourceLang: "EN",
   targetLang: "PT-BR",
+  source: "text",
 };
 
 const field = () => screen.getByRole("textbox", { name: "Texto para traduzir" });
@@ -46,6 +47,62 @@ beforeEach(() => {
   vi.mocked(tauri.onPopupReset)
     .mockReset()
     .mockImplementation(async () => () => {});
+});
+
+describe("PopupApp — histórico com texto lido da tela", () => {
+  it("records text that came from a screen region as OCR", async () => {
+    let resetHandler: Parameters<typeof tauri.onPopupReset>[0] | undefined;
+    vi.mocked(tauri.onPopupReset).mockImplementation(async (handler) => {
+      resetHandler = handler;
+      return () => {};
+    });
+    const user = userEvent.setup();
+    render(<PopupApp />);
+    await waitFor(() => expect(resetHandler).toBeDefined());
+
+    act(() => resetHandler?.("hello", true, true, null, "ocr"));
+    await screen.findByText("olá");
+    await user.keyboard("{Enter}");
+
+    expect(recordHistory).toHaveBeenCalledExactlyOnceWith({ ...RECORD, source: "ocr" });
+  });
+
+  it("records typed text as plain text even after a screen region filled the popup", async () => {
+    let resetHandler: Parameters<typeof tauri.onPopupReset>[0] | undefined;
+    vi.mocked(tauri.onPopupReset).mockImplementation(async (handler) => {
+      resetHandler = handler;
+      return () => {};
+    });
+    const user = userEvent.setup();
+    render(<PopupApp />);
+    await waitFor(() => expect(resetHandler).toBeDefined());
+    act(() => resetHandler?.("Press any key", true, true, null, "ocr"));
+
+    await user.clear(field());
+    await user.type(field(), "hello");
+    await screen.findByText("olá");
+    await user.keyboard("{Enter}");
+
+    expect(recordHistory).toHaveBeenCalledExactlyOnceWith(RECORD);
+  });
+
+  it("goes back to plain text after a reset without a screen region", async () => {
+    let resetHandler: Parameters<typeof tauri.onPopupReset>[0] | undefined;
+    vi.mocked(tauri.onPopupReset).mockImplementation(async (handler) => {
+      resetHandler = handler;
+      return () => {};
+    });
+    const user = userEvent.setup();
+    render(<PopupApp />);
+    await waitFor(() => expect(resetHandler).toBeDefined());
+    act(() => resetHandler?.("hello", true, true, null, "ocr"));
+
+    act(() => resetHandler?.("hello", true, false, null, "text"));
+    await screen.findByText("olá");
+    await user.keyboard("{Enter}");
+
+    expect(recordHistory).toHaveBeenCalledExactlyOnceWith(RECORD);
+  });
 });
 
 describe("PopupApp — histórico", () => {

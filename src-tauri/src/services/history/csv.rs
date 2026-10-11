@@ -1,8 +1,8 @@
-use super::HistoryEntry;
+use super::{HistoryEntry, HistorySource};
 
 /// Marca de ordem de bytes UTF-8: sem ela, o Excel abre o CSV com os acentos quebrados.
 const BOM: &str = "\u{FEFF}";
-const HEADER: [&str; 7] = [
+const HEADER: [&str; 8] = [
     "original",
     "traducao",
     "idioma_origem",
@@ -10,6 +10,7 @@ const HEADER: [&str; 7] = [
     "favorito",
     "usos",
     "ultimo_uso",
+    "origem",
 ];
 const MILLIS_PER_SECOND: i64 = 1000;
 const SECONDS_PER_DAY: i64 = 86_400;
@@ -29,6 +30,11 @@ pub fn export(entries: &[HistoryEntry]) -> String {
                 if entry.favorite { "sim" } else { "nao" }.to_owned(),
                 entry.use_count.to_string(),
                 iso_utc(entry.last_used_at),
+                match entry.source {
+                    HistorySource::Text => "texto",
+                    HistorySource::Ocr => "ocr",
+                }
+                .to_owned(),
             ],
         );
     }
@@ -116,6 +122,7 @@ mod tests {
             last_used_at: 1_700_000_000_000,
             use_count: 3,
             last_reviewed_at: None,
+            source: super::super::HistorySource::Text,
         }
     }
 
@@ -126,7 +133,7 @@ mod tests {
         assert_eq!(
             csv,
             "\u{FEFF}\"original\",\"traducao\",\"idioma_origem\",\"idioma_destino\",\
-             \"favorito\",\"usos\",\"ultimo_uso\"\r\n"
+             \"favorito\",\"usos\",\"ultimo_uso\",\"origem\"\r\n"
         );
     }
 
@@ -135,8 +142,20 @@ mod tests {
         let csv = export(&[entry("hello", "olá")]);
 
         assert!(csv.ends_with(
-            "\"hello\",\"olá\",\"EN\",\"PT-BR\",\"sim\",\"3\",\"2023-11-14T22:13:20Z\"\r\n"
+            "\"hello\",\"olá\",\"EN\",\"PT-BR\",\"sim\",\"3\",\"2023-11-14T22:13:20Z\",\"texto\"\r\n"
         ));
+    }
+
+    #[test]
+    fn says_which_translations_were_read_from_the_screen() {
+        let ocr = HistoryEntry {
+            source: super::super::HistorySource::Ocr,
+            ..entry("Press any key", "Aperte qualquer tecla")
+        };
+
+        let csv = export(&[ocr]);
+
+        assert!(csv.ends_with(",\"ocr\"\r\n"));
     }
 
     #[test]

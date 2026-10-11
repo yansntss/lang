@@ -68,6 +68,9 @@ export type ExplainEvent =
   | { kind: "done" }
   | { kind: "error"; code: string; message: string };
 
+/** De onde veio o texto: digitado ou selecionado (`text`) ou lido da tela (`ocr`). */
+export type HistorySource = "text" | "ocr";
+
 /** Item do histórico (espelha `HistoryEntry` do backend). Datas em ms desde 1970 UTC. */
 export interface HistoryEntry {
   id: number;
@@ -80,6 +83,7 @@ export interface HistoryEntry {
   lastUsedAt: number;
   useCount: number;
   lastReviewedAt: number | null;
+  source: HistorySource;
 }
 
 /** Tradução confirmada pelo usuário, para guardar no histórico. */
@@ -88,6 +92,7 @@ export interface HistoryRecord {
   translatedText: string;
   sourceLang: string;
   targetLang: TargetLang;
+  source: HistorySource;
 }
 
 /** Corpo do evento `popup://reset`. */
@@ -99,6 +104,8 @@ export interface PopupResetPayload {
   pinned?: boolean;
   /** Aviso a mostrar no popup (por exemplo, a captura da tela falhou). */
   notice?: string | null;
+  /** De onde veio o texto do `prefill`. Ausente: `text`. */
+  source?: HistorySource;
 }
 
 /** Retângulo arrastado na janela de seleção, em pixels da janela (CSS). */

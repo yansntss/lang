@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { errorMessage, hidePopup, onPopupReset } from "../lib/tauri";
+import type { HistorySource } from "../lib/types";
 
 interface PopupLifecycleHandlers {
   /**
@@ -11,6 +12,7 @@ interface PopupLifecycleHandlers {
     autoTranslate?: boolean,
     pinned?: boolean,
     notice?: string | null,
+    source?: HistorySource,
   ) => void;
   onError: (message: string) => void;
 }
@@ -26,8 +28,8 @@ export function usePopupLifecycle({ onReset, onError }: PopupLifecycleHandlers):
     let disposed = false;
     let stopListening: (() => void) | undefined;
 
-    onPopupReset((prefill, autoTranslate, pinned, notice) =>
-      handlers.current.onReset(prefill, autoTranslate, pinned, notice),
+    onPopupReset((prefill, autoTranslate, pinned, notice, source) =>
+      handlers.current.onReset(prefill, autoTranslate, pinned, notice, source),
     ).then(
       (stop) => {
         if (disposed) {

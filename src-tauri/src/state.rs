@@ -8,6 +8,7 @@ use crate::services::claude::ClaudeClient;
 use crate::services::deepl::DeepLClient;
 use crate::services::explain::ExplainService;
 use crate::services::history::SqliteHistory;
+use crate::services::ocr::{OcrService, PlatformOcr};
 use crate::services::translation::TranslationService;
 use crate::settings::SettingsStore;
 
@@ -26,6 +27,7 @@ pub struct AppState {
     /// `None` se o banco não abriu: o app continua traduzindo, sem histórico.
     history: Option<Arc<SqliteHistory>>,
     pub secrets: Arc<dyn SecretStore>,
+    pub ocr: OcrService<PlatformOcr>,
 }
 
 impl AppState {
@@ -48,6 +50,7 @@ impl AppState {
             settings: Arc::new(SettingsStore::load(&data_dir.join(SETTINGS_FILE))),
             history,
             secrets,
+            ocr: OcrService::new(PlatformOcr),
         })
     }
 

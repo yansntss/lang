@@ -35,6 +35,11 @@ export default function HistoryList({
             <p className="history__source">{entry.sourceText}</p>
             <p className="history__translation">{entry.translatedText}</p>
             <p className="history__meta">
+              {entry.source === "ocr" && (
+                <span className="history__badge" title="Texto lido da tela">
+                  OCR
+                </span>
+              )}
               {entry.sourceLang} → {entry.targetLang} · {formatDate(entry.lastUsedAt)}
               {entry.useCount > 1 && ` · ${entry.useCount}×`}
             </p>

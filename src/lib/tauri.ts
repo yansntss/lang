@@ -5,6 +5,7 @@ import type {
   ExplainEvent,
   HistoryEntry,
   HistoryRecord,
+  HistorySource,
   KeyCheck,
   PopupResetPayload,
   Preferences,
@@ -185,6 +186,7 @@ export function onPopupReset(
     autoTranslate?: boolean,
     pinned?: boolean,
     notice?: string | null,
+    source?: HistorySource,
   ) => void,
 ): Promise<() => void> {
   return listen<PopupResetPayload>(POPUP_RESET_EVENT, (event) =>
@@ -193,6 +195,7 @@ export function onPopupReset(
       event.payload.autoTranslate ?? true,
       event.payload.pinned ?? false,
       event.payload.notice ?? null,
+      event.payload.source ?? "text",
     ),
   );
 }

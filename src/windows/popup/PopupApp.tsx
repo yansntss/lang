@@ -13,7 +13,7 @@ import {
   recordHistory,
   setPopupPinned,
 } from "../../lib/tauri";
-import type { Translation } from "../../lib/types";
+import type { HistorySource, Translation } from "../../lib/types";
 import "../../styles/base.css";
 import ExplainPanel from "./ExplainPanel";
 import langIcon from "../../../assets/icon/lang-icon.svg";
@@ -30,6 +30,9 @@ export default function PopupApp() {
   const resultRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const lastRecorded = useRef<string | null>(null);
+  // O texto lido da tela que preencheu o popup. Só ele vai ao histórico como OCR: editado ou
+  // trocado pelo usuário, conta como texto comum.
+  const ocrText = useRef<string | null>(null);
   // Texto capturado que o usuário pediu para só traduzir depois do Enter (configurações).
   const [held, setHeld] = useState(false);
   // Fixado, o popup não some ao perder o foco, e o Enter copia sem fechar.
@@ -54,6 +57,7 @@ export default function PopupApp() {
       autoTranslate: boolean = true,
       stillPinned: boolean = false,
       notice: string | null = null,
+      origin: HistorySource = "text",
     ) => {
       // Fixado e sem texto novo: só o aviso. O que o usuário tinha no popup continua lá.
       if (stillPinned && prefill === null && notice !== null) {
@@ -63,6 +67,7 @@ export default function PopupApp() {
       }
       cancelExplanation();
       lastRecorded.current = null;
+      ocrText.current = origin === "ocr" && prefill ? prefill.trim() : null;
       // Seleção em branco não tem o que traduzir: reter só a prenderia em "Enter traduz".
       setHeld(prefill !== null && prefill.trim() !== "" && !autoTranslate);
       setText(prefill ?? "");
@@ -113,6 +118,7 @@ export default function PopupApp() {
       translatedText: translation.text,
       sourceLang: translation.sourceLang,
       targetLang: translation.targetLang,
+      source: sourceText === ocrText.current ? "ocr" : "text",
     }).catch(() => {});
   };
 
