@@ -31,18 +31,21 @@ body,
   inset: 0;
   width: 100%;
   height: 100%;
+  /* Camada própria: a foto do monitor é enviada à GPU uma vez e nunca repintada no arrasto. */
+  will-change: transform;
 }
 
+/* O "buraco" da seleção é um clip-path aplicado pelo script; a camada é só cor lisa. */
 .region__shade {
   position: absolute;
   inset: 0;
   background: var(--region-shade);
+  will-change: transform;
 }
 
 .region__selection {
   position: absolute;
   outline: 2px solid var(--region-accent);
-  box-shadow: 0 0 0 100vmax var(--region-shade);
 }
 
 .region__hint,

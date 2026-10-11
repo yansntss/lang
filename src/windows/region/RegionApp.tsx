@@ -48,13 +48,47 @@ function draw(canvas: HTMLCanvasElement | null, snapshot: RegionSnapshot) {
 }
 
 /**
+ * Mostra o retângulo do arrasto e abre um "buraco" nele na camada escura. Mexe direto no DOM,
+ * sem renderizar o React a cada movimento do mouse: só a moldura e a camada de cor lisa são
+ * repintadas, nunca a captura da tela.
+ */
+function paintSelection(box: HTMLElement | null, shade: HTMLElement | null, drag: Drag | null) {
+  if (!box || !shade) return;
+  if (!drag) {
+    box.hidden = true;
+    shade.style.removeProperty("clip-path");
+    return;
+  }
+  const { x, y, width, height } = toSelection(drag);
+  const right = x + width;
+  const bottom = y + height;
+  box.hidden = false;
+  box.style.left = `${x}px`;
+  box.style.top = `${y}px`;
+  box.style.width = `${width}px`;
+  box.style.height = `${height}px`;
+  shade.style.setProperty(
+    "clip-path",
+    `polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ` +
+      `${x}px ${y}px, ${right}px ${y}px, ${right}px ${bottom}px, ${x}px ${bottom}px, ${x}px ${y}px)`,
+  );
+}
+
+/**
  * Janela de seleção de região: mostra a tela congelada e escurecida, e o usuário arrasta um
  * retângulo sobre o texto. Soltar o mouse confirma; Esc cancela.
  */
 export default function RegionApp() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [drag, setDrag] = useState<Drag | null>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const shadeRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<Drag | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  const setDrag = useCallback((drag: Drag | null) => {
+    dragRef.current = drag;
+    paintSelection(boxRef.current, shadeRef.current, drag);
+  }, []);
 
   const load = useCallback(() => {
     setDrag(null);
@@ -65,7 +99,7 @@ export default function RegionApp() {
       (snapshot) => draw(canvasRef.current, snapshot),
       (error: unknown) => setMessage(errorMessage(error)),
     );
-  }, []);
+  }, [setDrag]);
 
   useEffect(() => {
     let disposed = false;
@@ -106,31 +140,30 @@ export default function RegionApp() {
     if (event.button !== 0) return;
     // O jsdom (testes) não implementa a captura do ponteiro.
     event.currentTarget.setPointerCapture?.(event.pointerId);
-    setMessage(null);
+    if (message) setMessage(null);
     setDrag({ startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY });
   };
 
   const onPointerMove = (event: PointerEvent<HTMLElement>) => {
-    setDrag((current) => (current ? { ...current, x: event.clientX, y: event.clientY } : null));
+    const current = dragRef.current;
+    if (current) setDrag({ ...current, x: event.clientX, y: event.clientY });
   };
 
   const onPointerUp = (event: PointerEvent<HTMLElement>) => {
-    if (!drag) return;
-    const selection = toSelection({ ...drag, x: event.clientX, y: event.clientY });
+    const current = dragRef.current;
+    if (!current) return;
+    const selection = toSelection({ ...current, x: event.clientX, y: event.clientY });
+    setDrag(null);
     if (selection.width < MIN_DRAG_PX || selection.height < MIN_DRAG_PX) {
-      setDrag(null);
       setMessage(CLICK_HINT);
       return;
     }
-    setDrag(null);
     // Recusada, a seleção continua: a captura fica na tela para o usuário tentar de novo.
     confirmRegion(selection).then(
       () => clear(canvasRef.current),
       (error: unknown) => setMessage(errorMessage(error)),
     );
   };
-
-  const selection = drag ? toSelection(drag) : null;
 
   return (
     <main
@@ -142,20 +175,8 @@ export default function RegionApp() {
       onPointerUp={onPointerUp}
     >
       <canvas ref={canvasRef} className="region__image" aria-hidden="true" />
-      {selection ? (
-        <div
-          data-testid="region-selection"
-          className="region__selection"
-          style={{
-            left: `${selection.x}px`,
-            top: `${selection.y}px`,
-            width: `${selection.width}px`,
-            height: `${selection.height}px`,
-          }}
-        />
-      ) : (
-        <div className="region__shade" />
-      )}
+      <div ref={shadeRef} className="region__shade" />
+      <div ref={boxRef} data-testid="region-selection" className="region__selection" hidden />
       <p className="region__hint">Arraste sobre o texto · Esc cancela</p>
       {message && (
         <p role="alert" className="region__message">

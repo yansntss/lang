@@ -93,6 +93,24 @@ describe("RegionApp", () => {
     expect(box).toHaveStyle({ left: "10px", top: "20px", width: "100px", height: "50px" });
   });
 
+  it("hides the area when the drag ends or a new capture arrives mid-drag", async () => {
+    await renderLoaded();
+    const box = screen.getByTestId("region-selection");
+    expect(box).not.toBeVisible();
+
+    drag([100, 50], [400, 90]);
+    expect(box).not.toBeVisible();
+
+    fireEvent.pointerDown(area(), { button: 0, clientX: 10, clientY: 20 });
+    fireEvent.pointerMove(area(), { clientX: 110, clientY: 70 });
+    expect(box).toBeVisible();
+    await act(async () => showHandler?.());
+
+    expect(box).not.toBeVisible();
+    fireEvent.pointerUp(area(), { clientX: 300, clientY: 200 });
+    expect(confirmRegion).toHaveBeenCalledTimes(1);
+  });
+
   it("a click without dragging asks for an area instead of confirming", async () => {
     await renderLoaded();
 
@@ -130,7 +148,7 @@ describe("RegionApp", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Selecione uma área maior");
     expect((document.querySelector("canvas") as HTMLCanvasElement).width).toBe(1);
-    expect(screen.queryByTestId("region-selection")).not.toBeInTheDocument();
+    expect(screen.getByTestId("region-selection")).not.toBeVisible();
 
     drag([10, 10], [300, 200]);
     expect(confirmRegion).toHaveBeenCalledTimes(2);
