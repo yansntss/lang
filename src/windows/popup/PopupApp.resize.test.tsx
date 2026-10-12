@@ -19,12 +19,15 @@ const RESULT_AREA_HEIGHT = 100;
 let contentHeight = 150;
 
 let notifyContentResized: (() => void) | undefined;
+let observed: Element[] = [];
 
 class FakeResizeObserver {
   constructor(callback: () => void) {
     notifyContentResized = callback;
   }
-  observe() {}
+  observe(element: Element) {
+    observed.push(element);
+  }
   disconnect() {}
   unobserve() {}
 }
@@ -48,6 +51,7 @@ function stubLayout() {
 beforeEach(() => {
   contentHeight = 150;
   notifyContentResized = undefined;
+  observed = [];
   fitPopupHeight.mockReset().mockResolvedValue(undefined);
   vi.mocked(tauri.onPopupReset).mockReset().mockResolvedValue(() => {});
   vi.stubGlobal("ResizeObserver", FakeResizeObserver);
@@ -78,6 +82,14 @@ describe("PopupApp window height", () => {
 
     // 300 - 100 + 420
     expect(fitPopupHeight).toHaveBeenCalledWith(620);
+  });
+
+  it("watches the text field, which grows with what is typed", () => {
+    stubLayout();
+
+    const { getByLabelText } = render(<PopupApp />);
+
+    expect(observed).toContain(getByLabelText("Texto para traduzir"));
   });
 
   it("asks again when the window regains focus, since it reopens at the chosen size", () => {

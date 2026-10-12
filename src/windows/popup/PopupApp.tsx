@@ -46,7 +46,7 @@ export default function PopupApp() {
   const cancelExplanation = explanation.cancel;
   const canExplain = useHasSecret("anthropic");
   useTheme();
-  useFitPopupHeight(popupRef, resultRef, contentRef);
+  useFitPopupHeight(popupRef, inputRef, resultRef, contentRef);
   useWindowDrag(popupRef);
 
   // Cada fala nova da legenda ao vivo entra no campo e é traduzida como se tivesse sido lida

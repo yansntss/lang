@@ -16,6 +16,13 @@
   /* Espaço para o ícone e o botão de fixar no canto. */
   padding-right: 44px;
   resize: none;
+  /* Cresce com o texto de 3 até 8 linhas (+ padding e borda); depois, rola. O limite é em
+     linhas, não em vh: a janela cresce junto e um vh faria o campo crescer em ciclo. */
+  field-sizing: content;
+  flex-shrink: 0;
+  min-height: calc(3lh + 18px);
+  max-height: calc(8lh + 18px);
+  overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--surface);

@@ -578,6 +578,9 @@ Verificação manual (pendente; `npm run tauri dev`):
 - Crescimento automático: o front mede o conteúdo (`useFitPopupHeight`) e chama
   `fit_popup_height`; o Rust usa `max(altura escolhida, altura do conteúdo)` até o limite e puxa a
   janela de volta para dentro do monitor. Só a altura cresce; a largura é do usuário.
+- O campo de texto também cresce com o que é digitado (`field-sizing: content`, de 3 a 8
+  linhas; depois rola). O limite é só visual, sem teto de caracteres. O hook observa o campo
+  além do resultado, então a janela acompanha.
 - Um `Resized` que o app acabou de pedir não conta como escolha do usuário (`popup_size.rs`,
   `is_echo`), nem os que ocorrem nos 300 ms após a exibição.
 - A borda nativa não serviu: numa janela sem decoração o Tauri (`tauri-runtime-wry`,
