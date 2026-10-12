@@ -9,27 +9,40 @@ between English and Brazilian Portuguese. It is built for people learning Englis
 translate without leaving what they are doing. The app's interface is in Portuguese. The
 repository is named `lang`.
 
-![Translation box next to the cursor](docs/popup.png)
+<p align="center">
+  <a href="https://github.com/yansntss/lang/releases/latest"><img src="https://img.shields.io/github/v/release/yansntss/lang?label=Download%20for%20Windows&logo=windows&style=for-the-badge" alt="Download for Windows"></a>
+</p>
+
+<p align="center"><img src="docs/demo.gif" alt="Demo: selected text is translated with Ctrl+Alt+T, and a game subtitle is read from the screen with Ctrl+Alt+Y" width="480"></p>
 
 Press **`Ctrl+Alt+T`** in any app: a floating box opens near the cursor. If text was selected, it
 is filled in and translated right away. English becomes Portuguese; any other language becomes
 English. **Esc** closes it; **Enter** copies the translation and closes.
 
+Text you cannot select (a game subtitle, an image, a video)? Press **`Ctrl+Alt+Y`**, the screen
+dims, and you drag a rectangle over the text: the app reads it with Windows' built-in OCR and
+translates it.
+
 ## Features
 
 - **Translation** through DeepL, with automatic source-language detection.
 - **Selection capture:** text selected in another app shows up in the box automatically.
+- **Read from the screen (OCR):** drag over any part of the screen to translate the text in it.
+  It uses Windows' native OCR, offline and with no key.
+- **Live caption** (optional): after reading a region, the app rereads the same area at an
+  interval and translates each new line, handy for game and video subtitles.
 - **Explain** (optional): Claude explains grammar and vocabulary and gives usage examples, in
   Portuguese, in real time.
 - **History:** keeps what you confirm (Enter or Explain), with search, favorites, flashcard-style
   review of favorites and CSV export.
-- **Settings:** shortcut, API keys, theme, variants (American/British English, Brazilian/European
-  Portuguese), the Explain model and start with Windows.
+- **Settings:** both shortcuts, API keys, theme, variants (American/British English, Brazilian/European
+  Portuguese), the Explain model, live caption (and its
+  interval) and start with Windows.
 
 ## Installation
 
-1. Download the installer `Lang_<version>_x64-setup.exe` from the repository's **Releases**
-   page.
+1. Download the installer `Lang_<version>_x64-setup.exe` from the
+   [latest release page](https://github.com/yansntss/lang/releases/latest).
 2. Run it. The installation is **per user**: it does not ask for administrator rights.
 3. Windows SmartScreen will warn about an **"unknown publisher"**, because the installer is not
    code-signed (code-signing certificates are paid). Click **More info → Run anyway**.
@@ -51,6 +64,8 @@ installer from GitHub Releases, verifies its signature and installs over the cur
 |---|---|
 | Open the translator | `Ctrl+Alt+T` (configurable), or click the tray icon |
 | Translate text from another app | Select the text and press the shortcut |
+| Translate text on the screen (game, image, video) | `Ctrl+Alt+Y` (configurable) and drag a rectangle over the text. **Esc** cancels |
+| Follow a subtitle | After reading a region, click **Legenda ao vivo** (enable it first in **Settings**). **Parar legenda** stops it |
 | Copy the translation | **Enter** (also saves it to the history) |
 | Close | **Esc**, or click outside |
 | Resize | Drag the edges or corners of the box (the cursor changes over them). The size is remembered, and the box grows by itself to fit the translation and the explanation |
@@ -58,6 +73,8 @@ installer from GitHub Releases, verifies its signature and installs over the cur
 | Keep on screen | Pin button in the corner of the text field: while pinned, the popup does not disappear when you click another app and **Enter** copies without closing. **Esc** closes and unpins |
 | Understand the translation | **Explain** button (needs the Anthropic key) |
 | History, settings, quit | Tray icon menu |
+
+![Translation box next to the cursor](docs/popup.png)
 
 ## Privacy and security
 
@@ -76,6 +93,8 @@ installer from GitHub Releases, verifies its signature and installs over the cur
   JetBrains) it is off by default and can be enabled in Settings. In those apps the popup opens
   empty.
 - Apps running as administrator do not allow capture (a Windows limitation).
+- Screen reading (OCR) happens **on your computer**: only the recognized text goes to DeepL,
+  never the image. In live caption mode, each new line uses DeepL quota.
 
 ## Troubleshooting
 
@@ -84,6 +103,8 @@ installer from GitHub Releases, verifies its signature and installs over the cur
   registered.
 - **The popup opens empty with text selected:** the focused app may be a blocked terminal or
   editor, or it may be running as administrator. Type or paste the text instead.
+- **OCR says there is no recognition language:** add **English (United States)** in
+  **Windows Settings → Time & language → Language & region**.
 - **The app does not start:** a message box names the file with the reason
   (`%LOCALAPPDATA%\com.yansa.lang-app\startup-error.log`). Regular logs are in
   `%LOCALAPPDATA%\com.yansa.lang-app\logs`.

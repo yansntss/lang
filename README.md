@@ -8,26 +8,40 @@ App de bandeja para **Windows 10/11** (Tauri v2 + React/TypeScript) que traduz r
 e português, feito para quem está aprendendo inglês e quer traduzir sem sair do que está fazendo.
 A interface e esta documentação estão em português. O repositório se chama `lang`.
 
-![Caixa de tradução perto do cursor](docs/popup.png)
+<p align="center">
+  <a href="https://github.com/yansntss/lang/releases/latest"><img src="https://img.shields.io/github/v/release/yansntss/lang?label=Baixar%20para%20Windows&logo=windows&style=for-the-badge" alt="Baixar para Windows"></a>
+</p>
+
+<p align="center"><img src="docs/demo.gif" alt="Demonstração: um texto selecionado é traduzido com Ctrl+Alt+T, e a legenda de um jogo é lida da tela com Ctrl+Alt+Y" width="480"></p>
 
 Aperte **`Ctrl+Alt+T`** em qualquer app: abre uma caixa flutuante perto do cursor. Se havia texto
 selecionado, ele já vem preenchido e é traduzido na hora. Inglês vira português; qualquer outro
 idioma vira inglês. **Esc** fecha; **Enter** copia a tradução e fecha.
 
+Texto que não dá para selecionar (legenda de jogo, imagem, vídeo)? Aperte **`Ctrl+Alt+Y`**, a tela
+escurece, e você arrasta um retângulo sobre o texto: o app lê o trecho com o OCR do próprio
+Windows e traduz.
+
 ## O que faz
 
 - **Tradução** pelo DeepL, com detecção automática do idioma de origem.
 - **Captura da seleção:** o texto selecionado em outro app já aparece no campo.
+- **Ler da tela (OCR):** arraste sobre qualquer trecho da tela para traduzir o que estiver escrito
+  nele. Usa o OCR nativo do Windows, offline e sem chave.
+- **Legenda ao vivo** (opcional): depois de ler um trecho, o app relê a mesma área a cada intervalo
+  e traduz cada fala nova, bom para legendas de jogos e vídeos.
 - **Explicar** (opcional): o Claude explica gramática, vocabulário e dá exemplos de uso, em
   português, em tempo real.
 - **Histórico:** guarda o que você confirma (Enter ou Explicar), com busca, favoritos, revisão dos
   favoritos em cartões e exportação para CSV.
-- **Configurações:** atalho, chaves de API, tema, variantes (inglês americano/britânico,
-  português do Brasil/de Portugal), modelo do Explicar e início com o Windows.
+- **Configurações:** os dois atalhos, chaves de API, tema, variantes (inglês americano/britânico,
+  português do Brasil/de Portugal), modelo do Explicar, legenda ao vivo (e o
+  intervalo) e início com o Windows.
 
 ## Instalação
 
-1. Baixe o instalador `Lang_<versão>_x64-setup.exe` na página **Releases** do repositório.
+1. Baixe o instalador `Lang_<versão>_x64-setup.exe` na
+   [página da versão mais recente](https://github.com/yansntss/lang/releases/latest).
 2. Execute-o. A instalação é **por usuário**: não pede administrador.
 3. O Windows SmartScreen vai avisar sobre um **"editor desconhecido"**, porque o instalador não é
    assinado (assinatura de código é paga). Clique em **Mais informações → Executar assim mesmo**.
@@ -47,6 +61,8 @@ reiniciar** baixa o instalador do GitHub Releases, confere a assinatura e instal
 |---|---|
 | Abrir o tradutor | `Ctrl+Alt+T` (configurável), ou clique no ícone da bandeja |
 | Traduzir um trecho de outro app | Selecione o texto e aperte o atalho |
+| Traduzir texto da tela (jogo, imagem, vídeo) | `Ctrl+Alt+Y` (configurável) e arraste um retângulo sobre o texto. **Esc** cancela |
+| Acompanhar uma legenda | Depois de ler um trecho, clique em **Legenda ao vivo** (ative antes em **Configurações**). **Parar legenda** encerra |
 | Copiar a tradução | **Enter** (também grava no histórico) |
 | Fechar | **Esc**, ou clique fora |
 | Redimensionar | Arraste as bordas ou os cantos da caixa (o cursor muda ao passar por eles). O tamanho é lembrado, e a caixa cresce sozinha para caber a tradução e a explicação |
@@ -54,6 +70,8 @@ reiniciar** baixa o instalador do GitHub Releases, confere a assinatura e instal
 | Deixar na tela | Botão de alfinete no canto do campo: fixado, o popup não some ao clicar em outro app e o **Enter** copia sem fechar. **Esc** fecha e solta |
 | Entender a tradução | Botão **Explicar** (precisa da chave da Anthropic) |
 | Histórico, configurações, sair | Menu do ícone da bandeja |
+
+![Caixa de tradução perto do cursor](docs/popup.png)
 
 ## Privacidade e segurança
 
@@ -72,6 +90,8 @@ reiniciar** baixa o instalador do GitHub Releases, confere a assinatura e instal
   JetBrains) ela fica desligada por padrão e pode ser liberada nas Configurações. Nesses apps o
   popup abre vazio.
 - Apps rodando como administrador não permitem a captura (limitação do Windows).
+- A leitura da tela (OCR) acontece **no próprio computador**: só o texto reconhecido vai ao DeepL,
+  nunca a imagem. Na legenda ao vivo, cada fala nova gasta cota do DeepL.
 
 ## Problemas comuns
 
@@ -80,6 +100,8 @@ reiniciar** baixa o instalador do GitHub Releases, confere a assinatura e instal
   registrado.
 - **O popup abre vazio com texto selecionado:** o app em foco pode ser um terminal ou editor
   bloqueado, ou estar rodando como administrador. Digite ou cole o texto.
+- **O OCR diz que não há idioma de reconhecimento:** adicione o **Inglês (Estados Unidos)** em
+  **Configurações do Windows → Hora e idioma → Idioma e região**.
 - **O app não abre:** uma caixa de mensagem informa o arquivo com o motivo
   (`%LOCALAPPDATA%\com.yansa.lang-app\startup-error.log`). Os logs normais ficam em
   `%LOCALAPPDATA%\com.yansa.lang-app\logs`.
