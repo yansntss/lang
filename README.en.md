@@ -46,13 +46,62 @@ translates it.
 2. Run it. The installation is **per user**: it does not ask for administrator rights.
 3. Windows SmartScreen will warn about an **"unknown publisher"**, because the installer is not
    code-signed (code-signing certificates are paid). Click **More info → Run anyway**.
-4. On first run the **Settings** window opens by itself. Paste your **DeepL** key (the free plan
-   works; free keys end in `:fx`) and click **Test key** (the button label in the app is in
-   Portuguese).
-5. Optional: also paste your **Anthropic** key to use the **Explain** button.
+4. On first run the **Settings** window opens by itself, asking for the DeepL key. Follow the
+   [step-by-step guide below](#first-step-the-deepl-key): without it the app does not translate.
 
 Requirements: Windows 10 or 11 with WebView2 (included in Windows 11 and most Windows 10
 installs).
+
+## First step: the DeepL key
+
+The translation is done by **DeepL**, an online translation service. For Lang to use it, you need
+an **API key**: a code that works like the password for your DeepL access. The free plan lets you
+translate **500,000 characters a month**, plenty for everyday use. No programming needed; you
+just create the account and copy the code.
+
+The app's interface is in Portuguese, so the labels below show the Portuguese text first.
+
+**1. Create the free DeepL account**
+
+1. Open [deepl.com/pro-api](https://www.deepl.com/pro-api#api-pricing) and choose the
+   **DeepL API Free** plan.
+2. Sign up with your email. DeepL may ask for a credit card only to verify your identity; the
+   Free plan charges nothing.
+3. If you already use the DeepL website translator with an account, log out first: the API
+   account has to be a new one.
+
+**2. Copy your key**
+
+1. While logged in, open [deepl.com/your-account/keys](https://www.deepl.com/your-account/keys)
+   (your account's keys page).
+2. Copy the whole key. It looks like `1a2b3c4d-....:fx`: free-plan keys **end in `:fx`**.
+3. Treat the key like a password: do not post it or send it to anyone.
+
+**3. Paste the key into Lang**
+
+1. The **Configurações** (Settings) window opens by itself the first time Lang runs. If it is not
+   open, right-click the Lang icon in the system tray (near the clock; if you do not see it,
+   click the `^` arrow) and choose **Configurações**.
+2. In the **DeepL** section, paste the key into the **Chave da API do DeepL** (DeepL API key)
+   field and click **Salvar chave** (Save key).
+3. The text above the field changes to **Chave configurada ✓** (key configured), and a
+   **Testar chave** (Test key) button appears. Click it: you should see **Chave válida ✓** (valid
+   key), along with how much you have used this month.
+
+Done! Select some English text in any app and press **`Ctrl+Alt+T`**.
+
+**If something goes wrong**
+
+| Message | What to do |
+|---|---|
+| *A chave de API do DeepL é inválida ou foi recusada.* (the key is invalid or was rejected) | Copy the key again, whole, with no spaces, and save it again. |
+| *Chave de API do DeepL não configurada.* (no key configured) | The key was not saved: redo step 3. |
+| *A cota mensal do DeepL foi esgotada.* (monthly quota used up) | You used the month's 500,000 characters. Wait for the period to renew (the date is shown in your DeepL account). |
+
+**Optional: the Explain button.** For Claude to explain the grammar and vocabulary of a
+translation, create a key at [console.anthropic.com](https://console.anthropic.com/settings/keys)
+and paste it into the **Anthropic** section of Settings, the same way. This service is paid per
+use. Without the key, only the Explain button is disabled; everything else works normally.
 
 **Updates:** the app never checks for new versions on its own. In **Settings → About and updates**,
 click **Check for updates**; if there is a new version, **Install and restart** downloads the

@@ -45,11 +45,59 @@ Windows e traduz.
 2. Execute-o. A instalação é **por usuário**: não pede administrador.
 3. O Windows SmartScreen vai avisar sobre um **"editor desconhecido"**, porque o instalador não é
    assinado (assinatura de código é paga). Clique em **Mais informações → Executar assim mesmo**.
-4. Na primeira execução a janela **Configurações** abre sozinha. Cole a chave do **DeepL** (o plano
-   gratuito serve; as chaves gratuitas terminam em `:fx`) e clique em **Testar chave**.
-5. Opcional: cole também a chave da **Anthropic** para usar o botão **Explicar**.
+4. Na primeira execução a janela **Configurações** abre sozinha, pedindo a chave do DeepL. Siga o
+   [passo a passo abaixo](#primeiro-passo-a-chave-do-deepl): sem ela o app não traduz.
 
 Requisitos: Windows 10 ou 11 com WebView2 (já vem no Windows 11 e na maioria dos Windows 10).
+
+## Primeiro passo: a chave do DeepL
+
+Quem traduz é o **DeepL**, um serviço de tradução on-line. Para o Lang poder usá-lo, você precisa
+de uma **chave de API**: um código que funciona como a senha do seu acesso ao DeepL. O plano
+gratuito permite traduzir **500 mil caracteres por mês**, o que dá para muito uso no dia a dia.
+Não precisa saber programar; é só criar a conta e copiar o código.
+
+**1. Crie a conta gratuita no DeepL**
+
+1. Abra [deepl.com/pro-api](https://www.deepl.com/pro-api#api-pricing) e escolha o plano
+   **DeepL API Free** (gratuito).
+2. Faça o cadastro com seu e-mail. O DeepL pode pedir um cartão de crédito só para confirmar sua
+   identidade; o plano Free não cobra nada.
+3. Se você já usa o tradutor do site do DeepL com uma conta, saia dela antes: a conta da API
+   precisa ser uma conta nova.
+
+**2. Copie a sua chave**
+
+1. Já logado, abra [deepl.com/your-account/keys](https://www.deepl.com/your-account/keys)
+   (página de chaves da sua conta).
+2. Copie a chave inteira. Ela é parecida com `1a2b3c4d-....:fx`: chaves do plano gratuito
+   **terminam em `:fx`**.
+3. Trate a chave como uma senha: não publique nem envie para ninguém.
+
+**3. Cole a chave no Lang**
+
+1. A janela **Configurações** abre sozinha na primeira vez que o Lang roda. Se ela não estiver
+   aberta, clique com o botão direito no ícone do Lang na bandeja (perto do relógio; se não
+   aparecer, clique na setinha `^`) e escolha **Configurações**.
+2. Na seção **DeepL**, cole a chave no campo **Chave da API do DeepL** e clique em
+   **Salvar chave**.
+3. O texto acima do campo muda para **Chave configurada ✓**, e aparece o botão **Testar chave**.
+   Clique nele: deve aparecer **Chave válida ✓**, junto com quanto você já usou no mês.
+
+Pronto! Selecione um texto em inglês em qualquer app e aperte **`Ctrl+Alt+T`**.
+
+**Se algo der errado**
+
+| Mensagem | O que fazer |
+|---|---|
+| *A chave de API do DeepL é inválida ou foi recusada.* | Copie a chave de novo, inteira, sem espaços, e salve outra vez. |
+| *Chave de API do DeepL não configurada.* | Faltou salvar a chave: refaça o passo 3. |
+| *A cota mensal do DeepL foi esgotada.* | Você usou os 500 mil caracteres do mês. Espere o período renovar (a data aparece na sua conta do DeepL). |
+
+**Opcional: botão Explicar.** Para o Claude explicar a gramática e o vocabulário de uma tradução,
+crie uma chave em [console.anthropic.com](https://console.anthropic.com/settings/keys) e cole na
+seção **Anthropic** das Configurações, do mesmo jeito. Esse serviço é pago por uso. Sem a chave,
+só o botão Explicar fica desligado; o resto funciona normalmente.
 
 **Atualizações:** o app nunca procura versões novas sozinho. Em **Configurações → Sobre e
 atualizações**, clique em **Verificar atualizações**; se houver uma versão nova, **Instalar e
